@@ -1,13 +1,23 @@
-llama-index-llms-ollama
-llama-index
-llama-index-multi-modal-llms-ollama
-pytest-asyncio
-fastapi
-uvicorn
-pydantic
-requests
-pillow
-opencv-python
-loguru
+# MCP Core Dependencies
+mcp>=1.9.3
+
+# Data & Validation
+pydantic>=2.6.0
+
+# HTTP Client & Async
+httpx
+aiofiles
+
+# LLM Communication
+ollama>=0.1.6
+
+# Logging & Configuration
+loguru>=0.7.2
+python-dotenv>=1.0.0
+
+# Testing
 pytest
-httpx 
+pytest-asyncio
+
+# Image Processing (for multimodal support)
+pillow
