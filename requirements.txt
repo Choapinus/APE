@@ -1,23 +1,27 @@
-# MCP Core Dependencies
-mcp>=1.9.3
+# APE MCP Server Dependencies
 
-# Data & Validation
-pydantic>=2.6.0
+# Core MCP functionality (Official SDK)
+mcp>=1.0.0
 
-# HTTP Client & Async
-httpx
-aiofiles
+# Database operations
+# sqlite3 is built into Python, no need to install
 
-# LLM Communication
-ollama>=0.1.6
+# LLM integration  
+ollama>=0.3.0
 
-# Logging & Configuration
-loguru>=0.7.2
-python-dotenv>=1.0.0
+# Logging
+loguru>=0.7.0
 
 # Testing
-pytest
-pytest-asyncio
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
 
-# Image Processing (for multimodal support)
-pillow
+# HTTP client (for Ollama)
+httpx>=0.24.0
+
+# Data handling
+pydantic>=2.0.0
+
+# Development tools
+black>=23.0.0
+mypy>=1.0.0
