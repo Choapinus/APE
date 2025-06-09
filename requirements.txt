@@ -1,0 +1,13 @@
+llama-index-llms-ollama
+llama-index
+llama-index-multi-modal-llms-ollama
+pytest-asyncio
+fastapi
+uvicorn
+pydantic
+requests
+pillow
+opencv-python
+loguru
+pytest
+httpx 

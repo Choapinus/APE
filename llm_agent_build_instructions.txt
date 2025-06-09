@@ -1,0 +1,73 @@
+# Instructions to Build a Multimodal LLM Agent with MCP and LlamaIndex (Gemma3:4b)
+
+## 1. Project Setup
+- Create a new Python project directory.
+- Initialize a git repository and add a .gitignore for Python projects.
+- Create a virtual environment and activate it. Use conda to create a named one "ape"
+- Add a `requirements.txt` with the following (minimum):
+  - llama-index-llms-ollama
+  - llama-index (core)
+  - fastapi (for MCP server)
+  - uvicorn
+  - pydantic
+  - requests
+  - (Optional) pillow, opencv-python for image processing
+
+## 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+## 3. MCP Protocol Implementation
+- Implement the Model Context Protocol (MCP) for agent communication.
+- Create a FastAPI server that exposes endpoints for:
+  - Receiving user prompts (text and images)
+  - Returning LLM responses (text and images)
+- Define Pydantic models for request/response schemas, supporting multimodal (text + image) payloads.
+
+## 4. LLM Integration (LlamaIndex + Ollama)
+- Follow the official LlamaIndex Ollama documentation: https://docs.llamaindex.ai/en/stable/examples/llm/ollama/
+- Ensure Ollama is running locally with the Gemma3:4b model downloaded and available.
+- Example code to initialize the LLM:
+```python
+from llama_index.llms.ollama import Ollama
+
+llm = Ollama(
+    model="gemma3:4b",
+    request_timeout=120.0,
+    context_window=8000,  # adjust as needed
+)
+```
+- Use LlamaIndex's multimodal capabilities to process both text and images.
+- Implement streaming and structured output as needed.
+
+## 5. Multimodal Support
+- Accept both text and image inputs in the API.
+- For image inputs, encode images as base64 or accept file uploads.
+- Pass images to the LlamaIndex Ollama LLM as per documentation.
+- Return LLM-generated images (if any) as base64 or downloadable files.
+
+## 6. Conversation & Context Management
+- Store conversation history per session (in-memory or persistent DB).
+- Use LlamaIndex's context features to maintain dialogue state.
+
+## 7. Best Practices
+- Modularize code: separate LLM logic, API, and utilities.
+- Use environment variables for configuration (model name, ports, etc.).
+- Add logging and error handling throughout.
+- Write unit tests for core logic.
+- Document all endpoints and usage in a README.md.
+
+## 8. Example API Usage
+- Provide example curl or Python requests for sending text and image prompts.
+- Document expected response formats.
+
+## 9. References
+- LlamaIndex Ollama documentation: https://docs.llamaindex.ai/en/stable/examples/llm/ollama/
+- MCP protocol (if available): [link or description]
+- Ollama documentation: https://ollama.com/
+
+---
+
+**Summary:**
+Build a Python agent that exposes an MCP-compatible API, uses LlamaIndex with the Ollama backend (Gemma3:4b model), and supports multimodal (text + image) interactions. Follow best practices for modularity, configuration, and documentation. Reference the official LlamaIndex Ollama guide for LLM integration and multimodal support. 
