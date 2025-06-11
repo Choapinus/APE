@@ -14,98 +14,14 @@ import os
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 from loguru import logger
 import ollama
 
-from ape.mcp.session_manager import get_session_manager, SessionManager
-from ape.config import LLM_MODEL, OLLAMA_BASE_URL
-
-
-class ContextManager:
-    """Manages context and extracted data across tool calls and user messages."""
-    
-    def __init__(self, session_id: str = None):
-        self.session_data: Dict[str, Any] = {}
-        self.tool_results: List[Dict[str, Any]] = []
-        self.extracted_values: Dict[str, Any] = {}
-        self.current_session_id = session_id
-    
-    def add_tool_result(self, tool_name: str, arguments: dict, result: str):
-        """Add a tool result and extract key values."""
-        tool_result = {
-            "tool": tool_name,
-            "arguments": arguments,
-            "result": result,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        self.tool_results.append(tool_result)
-        
-        # Let the LLM extract values from the result
-        self._extract_values_from_result(tool_result)
-    
-    def _extract_values_from_result(self, tool_result: Dict[str, Any]):
-        """Extract and structure tool results for better LLM context."""
-        try:
-            # Store the raw result for LLM to analyze later
-            key = f"{tool_result['tool']}_{len(self.tool_results)}"
-            self.session_data[key] = tool_result
-            
-            # Store basic metadata
-            self.extracted_values[f"{key}_timestamp"] = tool_result["timestamp"]
-            self.extracted_values[f"{key}_tool"] = tool_result["tool"]
-            
-            # Enhanced value extraction for better LLM context
-            if isinstance(tool_result["result"], str):
-                try:
-                    # Store JSON results if valid
-                    data = json.loads(tool_result["result"])
-                    self.extracted_values[f"{key}_data"] = data
-                    
-                    # Extract commonly useful values for LLM context
-                    if isinstance(data, list) and len(data) > 0:
-                        first_item = data[0]
-                        if "session_id" in first_item:
-                            self.extracted_values["last_session_id"] = first_item["session_id"]
-                        if "message_count" in first_item:
-                            self.extracted_values["last_message_count"] = first_item["message_count"]
-                        if "total_messages" in first_item:
-                            self.extracted_values["total_messages"] = first_item["total_messages"]
-                        if "total_sessions" in first_item:
-                            self.extracted_values["total_sessions"] = first_item["total_sessions"]
-                            
-                except json.JSONDecodeError:
-                    # Store raw text if not JSON
-                    self.extracted_values[f"{key}_text"] = tool_result["result"]
-                    
-        except Exception as e:
-            logger.debug(f"Could not extract values from tool result: {e}")
-    
-    def get_context_summary(self) -> str:
-        """Get a summary of current context for prompts."""
-        summary = "CURRENT SESSION CONTEXT:\n"
-        
-        if self.session_data:
-            summary += "\nAvailable Tool Results:\n"
-            for key, value in self.session_data.items():
-                summary += f"- {key}: {value['tool']} (executed at {value['timestamp']})\n"
-        
-        if self.extracted_values:
-            summary += "\nExtracted Values:\n"
-            for key, value in self.extracted_values.items():
-                if isinstance(value, str) and len(value) > 100:
-                    summary += f"- {key}: {str(value)[:100]}...\n"
-                else:
-                    summary += f"- {key}: {value}\n"
-        
-        return summary
-    
-    def clear(self):
-        """Clear the context (for new sessions)."""
-        self.session_data.clear()
-        self.tool_results.clear()
-        self.extracted_values.clear()
+from ape.mcp.session_manager import get_session_manager
+from ape.cli.context_manager import ContextManager
+from ape.cli.mcp_client import MCPClient
+from ape.cli.chat_agent import ChatAgent
+from ape.config import OLLAMA_BASE_URL
 
 
 class APEChatCLI:
@@ -114,8 +30,12 @@ class APEChatCLI:
     def __init__(self):
         self.session_id = str(uuid.uuid4())
         self.session_manager = get_session_manager()
+        # Wrapper that manages the underlying MCP stdio connection
+        self.mcp_client = MCPClient()
+        # Kept for backward compatibility; will be removed in follow-up refactor
         self.mcp_session = None
         self.context_manager = ContextManager(self.session_id)
+        self.chat_agent = ChatAgent(self.session_id, self.mcp_client, self.context_manager)
         logger.info(f"Started new chat session: {self.session_id}")
     
     def print_banner(self):
@@ -140,61 +60,27 @@ class APEChatCLI:
         print("="*60 + "\n")
     
     async def connect_to_mcp(self):
-        """Connect to the MCP server and keep the connection alive."""
-        try:
-            logger.info("🔗 [MCP CLIENT] Connecting to MCP server...")
-            
-            server_params = StdioServerParameters(
-                command="python",
-                args=["mcp_server.py"],
-                env=None
-            )
-            
-            # Store the context managers for later cleanup
-            self.stdio_context = stdio_client(server_params)
-            read, write = await self.stdio_context.__aenter__()
-            logger.info("📡 [MCP CLIENT] STDIO connection established")
-            
-            self.session_context = ClientSession(read, write)
-            self.mcp_session = await self.session_context.__aenter__()
-            logger.info("🤝 [MCP CLIENT] MCP session created")
-            
-            # Initialize the connection
-            await self.mcp_session.initialize()
-            logger.info("✅ [MCP CLIENT] MCP connection initialized successfully")
-            
-            # List available tools
-            tools = await self.mcp_session.list_tools()
-            logger.info(f"📋 [MCP CLIENT] Available tools: {[tool.name for tool in tools.tools]}")
-            
-            return True
-                    
-        except Exception as e:
-            logger.error(f"❌ [MCP CLIENT] Failed to connect to MCP server: {e}")
-            return False
+        """Connect to the MCP server through the reusable wrapper."""
+        success = await self.mcp_client.connect()
+        if success:
+            # expose underlying session for legacy code paths (to be removed later)
+            self.mcp_session = self.mcp_client.mcp_session
+        return success
     
     async def disconnect_from_mcp(self):
-        """Disconnect from the MCP server properly."""
-        try:
-            if hasattr(self, 'session_context') and self.session_context:
-                await self.session_context.__aexit__(None, None, None)
-                logger.info("🤝 [MCP CLIENT] MCP session closed")
-            if hasattr(self, 'stdio_context') and self.stdio_context:
-                await self.stdio_context.__aexit__(None, None, None)
-                logger.info("📡 [MCP CLIENT] STDIO connection closed")
-            logger.info("✅ [MCP CLIENT] Disconnected successfully")
-        except Exception as e:
-            logger.error(f"Error disconnecting from MCP: {e}")
+        """Disconnect via the reusable wrapper."""
+        await self.mcp_client.disconnect()
+        self.mcp_session = None
     
     async def list_tools(self):
         """List available MCP tools."""
         try:
-            if not self.mcp_session:
+            if not self.mcp_client.is_connected:
                 print("❌ Not connected to MCP server")
                 return
             
             logger.info("🔧 [MCP CLIENT] Requesting tool list from MCP server")
-            tools_result = await self.mcp_session.list_tools()
+            tools_result = await self.mcp_client.list_tools()
             logger.info(f"✅ [MCP CLIENT] Received {len(tools_result.tools)} tools from server")
             
             print(f"\n🔧 Available MCP Tools ({len(tools_result.tools)}):")
@@ -412,7 +298,7 @@ AUTONOMOUS OPERATION GUIDELINES:
 7. **NO ASSUMPTIONS**: Do not assume what data "should" look like - only use what you actually receive"""
             
             # Increased iteration limits for autonomous operation
-            max_iterations = 15  # Allow for truly complex multi-step tasks
+            max_iterations = MAX_TOOLS_ITERATIONS  # Allow for truly complex multi-step tasks
             current_iteration = 0
             cumulative_response = ""
             
@@ -433,7 +319,7 @@ AUTONOMOUS OPERATION GUIDELINES:
                     model=LLM_MODEL,
                     messages=execution_conversation,
                     tools=capabilities["tools"],
-                    options={"temperature": 0.2},  # Slightly higher for more creative problem solving
+                    options={"temperature": TEMPERATURE},  # Slightly higher for more creative problem solving
                     stream=True
                 )
                 
@@ -752,9 +638,18 @@ The agent will use its natural reasoning to break down complex tasks!
                     except Exception as e:
                         logger.warning(f"Could not retrieve history: {e}")
                     
-                    response = await self.chat_with_llm(user_input, conversation)
+                    response = await self.chat_agent.chat_with_llm(user_input, conversation)
                     
-                    # Note: conversation is already saved in chat_with_llm method
+                    # Save user + assistant turn in history
+                    try:
+                        existing_history = self.session_manager.get_history(self.session_id)
+                        turn = [
+                            {"role": "user", "content": user_input, "timestamp": ""},
+                            {"role": "assistant", "content": response, "timestamp": ""},
+                        ]
+                        self.session_manager.save_messages(self.session_id, existing_history + turn)
+                    except Exception as e:
+                        logger.error(f"Error saving chat history: {e}")
                     
                 except KeyboardInterrupt:
                     print("\n\n👋 Chat interrupted. Use /quit to exit gracefully.")
@@ -776,7 +671,7 @@ async def main():
     
     # Check if Ollama is available
     try:
-        client = ollama.Client(host="http://localhost:11434")
+        client = ollama.Client(host=OLLAMA_BASE_URL)
         models = client.list()
         if not models.get('models'):
             print("⚠️  Warning: No Ollama models found. Make sure Ollama is running and has models installed.")
