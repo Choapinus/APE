@@ -109,27 +109,46 @@ class SessionManager:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Get basic session info
             cursor.execute("""
-                SELECT session_id, COUNT(*) as message_count, 
-                       MIN(timestamp) as first_message,
-                       MAX(timestamp) as last_message
+                SELECT session_id, COUNT(*) as message_count
                 FROM history
                 GROUP BY session_id
-                ORDER BY last_message DESC
+                ORDER BY MAX(timestamp) DESC
             """)
             
-            rows = cursor.fetchall()
-            conn.close()
+            session_rows = cursor.fetchall()
             
             sessions = []
-            for session_id, count, first, last in rows:
+            for session_id, count in session_rows:
+                # Get first message content (oldest record by ID)
+                cursor.execute("""
+                    SELECT content FROM history 
+                    WHERE session_id = ? 
+                    ORDER BY id ASC 
+                    LIMIT 1
+                """, (session_id,))
+                first_result = cursor.fetchone()
+                first_message = first_result[0][:100]+"..." if first_result else ""
+                
+                # Get last message content (newest record by ID)
+                cursor.execute("""
+                    SELECT content FROM history 
+                    WHERE session_id = ? 
+                    ORDER BY id DESC 
+                    LIMIT 1
+                """, (session_id,))
+                last_result = cursor.fetchone()
+                last_message = last_result[0][:100]+"..." if last_result else ""
+                
                 sessions.append({
                     "session_id": session_id,
                     "message_count": count,
-                    "first_message": first,
-                    "last_message": last
+                    "first_message": first_message,
+                    "last_message": last_message
                 })
             
+            conn.close()
             return sessions
             
         except Exception as e:

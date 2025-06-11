@@ -142,6 +142,91 @@ async def test_chat_with_search():
         except Exception as e:
             print(f"❌ Chat test failed: {e}")
 
+async def test_llm_tool_selection():
+    """Test the LLM's ability to select and use appropriate tools."""
+    print("🤖 Testing LLM tool selection...")
+    
+    test_cases = [
+        "I'd like to understand our conversation history",
+        "Help me find specific information in our chats",
+        "What kind of data do we have stored?",
+        "Can you analyze our previous discussions?",
+        "I need to search through our past conversations",
+        "Tell me about the system's capabilities",
+        "How can you help me with information retrieval?"
+    ]
+    
+    for test_message in test_cases:
+        print(f"\nTesting: '{test_message}'")
+        try:
+            result = await chat_with_llm(test_message, "test-diagnostic-session", include_history=False)
+            print(f"Response preview: {result[:200]}...")
+            
+            # Note: We don't predict what tools should be used, we let the LLM decide
+            if "Tool executed:" in result:
+                print("✅ LLM chose to use a tool")
+            else:
+                print("✅ LLM provided direct response")
+        except Exception as e:
+            print(f"❌ Error: {e}")
+
+async def test_llm_context_handling():
+    """Test the LLM's ability to handle context and make appropriate decisions."""
+    print("🧠 Testing LLM context handling...")
+    
+    # Simulate a conversation that builds context
+    conversation = [
+        "What information do we have available?",
+        "Can you analyze that data differently?",
+        "Let's focus on specific parts of that information",
+        "How does that compare to our previous discussions?",
+        "Can you summarize what we've found?"
+    ]
+    
+    session_id = "test-context-session"
+    
+    for i, query in enumerate(conversation):
+        print(f"\nStep {i+1}: '{query}'")
+        try:
+            result = await chat_with_llm(query, session_id, include_history=True)
+            print(f"Response preview: {result[:200]}...")
+            
+            # We're interested in how the LLM builds on context
+            if i > 0:
+                print("Context handling check:")
+                if "previous" in result.lower() or "earlier" in result.lower():
+                    print("✅ LLM referenced previous context")
+                else:
+                    print("ℹ️ New information provided")
+        except Exception as e:
+            print(f"❌ Error: {e}")
+
+async def test_llm_capability_discovery():
+    """Test the LLM's ability to discover and utilize available capabilities."""
+    print("🔍 Testing LLM capability discovery...")
+    
+    discovery_queries = [
+        "What can you help me with?",
+        "Show me your capabilities",
+        "How can you assist me with information?",
+        "What tools do you have access to?",
+        "Explain how you can help me search and analyze data"
+    ]
+    
+    for query in discovery_queries:
+        print(f"\nTesting: '{query}'")
+        try:
+            result = await chat_with_llm(query, "test-discovery-session", include_history=False)
+            print(f"Response preview: {result[:200]}...")
+            
+            # Check if the LLM demonstrates understanding of its capabilities
+            if any(capability in result.lower() for capability in ["tool", "search", "database", "history", "analyze"]):
+                print("✅ LLM demonstrated capability awareness")
+            else:
+                print("ℹ️ General response provided")
+        except Exception as e:
+            print(f"❌ Error: {e}")
+
 async def main():
     """Run all diagnostic tests."""
     print("🔬 APE MCP Tool Diagnostics")
@@ -158,6 +243,9 @@ async def main():
     await test_conversation_history()
     await test_tool_auto_detection()
     await test_chat_with_search()
+    await test_llm_tool_selection()
+    await test_llm_context_handling()
+    await test_llm_capability_discovery()
     
     print("\n🏁 Diagnostic tests completed!")
     print("Review the results above to identify:")

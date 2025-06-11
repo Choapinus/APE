@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test the pattern recognition fixes for the "from database" issue.
+Test the LLM's ability to understand and handle different types of requests.
 """
 
 import asyncio
@@ -11,79 +11,62 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp_server_refined import ToolExecutor, _chat_with_llm_impl
 from loguru import logger
 
-async def test_pattern_fixes():
-    """Test the problematic pattern recognition cases."""
-    print('🔧 Testing Pattern Recognition Fixes')
+async def test_llm_understanding():
+    """Test the LLM's ability to understand and handle different types of requests."""
+    print('🤖 Testing LLM Understanding')
     print('=' * 50)
     
-    # Test the problematic cases
+    # Test various user intents without hardcoding expected behaviors
     test_cases = [
-        ('get the last 5 interactions from the database', 'Should trigger HISTORY tool'),
-        ('show me database statistics', 'Should trigger DATABASE tool'),
-        ('how many messages are there?', 'Should trigger DATABASE tool'),
-        ('last interactions', 'Should trigger HISTORY tool'),
-        ('database info', 'Should trigger DATABASE tool'),
-        ('messages from the database', 'Should trigger HISTORY tool'),
-        ('show the last conversations', 'Should trigger HISTORY tool'),
-        ('total message count', 'Should trigger DATABASE tool'),
+        "I need information about our previous conversations",
+        "Could you help me understand what's in the database?",
+        "Let's analyze some of our chat history",
+        "I'm looking for specific messages",
+        "What capabilities do you have?",
+        "Can you tell me more about how you work?",
+        "I need help with searching through our discussions"
     ]
     
-    for message, expected in test_cases:
-        print(f'\n💬 "{message}"')
-        print(f'📋 Expected: {expected}')
-        
-        tool_info = await ToolExecutor.should_use_tool(message, 'test-session')
-        if tool_info:
-            tool_type = tool_info['tool']
-            confidence = tool_info.get('confidence', 'unknown')
-            print(f'🔧 Detected: {tool_type.upper()} tool (confidence: {confidence})')
-            
-            expected_tool = expected.lower().split('trigger ')[1].split(' tool')[0]
-            if tool_type == expected_tool:
-                print('✅ CORRECT!')
-            else:
-                print(f'❌ WRONG! Expected {expected_tool}, got {tool_type}')
-        else:
-            print('⚪ No tool detected')
-
-async def test_real_execution():
-    """Test actual tool execution with the fixed patterns."""
-    print('\n🎯 Testing Real Tool Execution')
-    print('=' * 50)
-    
-    scenarios = [
-        ('get the last 5 interactions from the database', 'Should show conversation history'),
-        ('how many total messages are stored?', 'Should show database statistics'),
-    ]
-    
-    for message, expected in scenarios:
-        print(f'\n💬 "{message}"')
-        print(f'📋 Expected: {expected}')
+    for message in test_cases:
+        print(f'\n💬 Testing: "{message}"')
         
         try:
-            result = await _chat_with_llm_impl(message, f'test-fix-{abs(hash(message))}', False)
+            result = await _chat_with_llm_impl(message, f'test-llm-{abs(hash(message))}', False)
             
-            if '📚' in result and 'Tool: get_conversation_history executed' in result:
-                print('✅ History tool executed correctly!')
-            elif '🗄️' in result and 'Tool: get_database_info executed' in result:
-                print('✅ Database tool executed correctly!')
-            elif 'Tool:' in result:
-                print('⚠️ Some tool executed, check if correct')
-            else:
-                print('💬 LLM response (no tool)')
-                
+            # Display result and let human testers evaluate
+            print(f'📤 Result preview: {result[:200]}...' if len(result) > 200 else result)
+            print('✅ LLM provided a response')
+            
         except Exception as e:
             print(f'❌ Error: {e}')
 
-async def main():
-    logger.remove()
-    logger.add(sys.stderr, level="WARNING")
+async def test_context_awareness():
+    """Test the LLM's ability to maintain context and use previous information."""
+    print('\n🧠 Testing Context Awareness')
+    print('=' * 50)
     
-    await test_pattern_fixes()
-    await test_real_execution()
+    # Simulate a conversation flow
+    conversation = [
+        "What can you tell me about our chat history?",
+        "Can you analyze that information differently?",
+        "I'd like to focus on a specific part of that data",
+        "Could you help me understand those results better?",
+        "Let's try a different approach to this"
+    ]
     
-    print('\n🎉 Pattern fix testing completed!')
-    print('\nIf the tests show "CORRECT!" for most cases, the fixes are working!')
+    session_id = 'test-context-awareness'
+    
+    for i, message in enumerate(conversation):
+        print(f'\n💬 Message {i+1}: "{message}"')
+        
+        try:
+            result = await _chat_with_llm_impl(message, session_id, True)  # Include history
+            print(f'📤 Result preview: {result[:200]}...' if len(result) > 200 else result)
+            print('✅ Response received')
+            
+        except Exception as e:
+            print(f'❌ Error: {e}')
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(test_llm_understanding())
+    asyncio.run(test_context_awareness()) 

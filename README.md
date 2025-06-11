@@ -1,129 +1,215 @@
-# APE (Advanced Prompt Engine) MCP Server
+# 🤖 APE (Agentic Protocol Executor)
 
-A sophisticated Model Context Protocol (MCP) server for intelligent conversation management with anti-hallucination measures and dynamic tool execution.
+**A conversational AI system built on the Model Context Protocol (MCP) with persistent conversation management and intelligent tool integration.**
+
+APE provides a sophisticated chat interface that leverages the [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) to create an intelligent agent with database-backed session management, comprehensive conversation tools, and extensible functionality.
 
 ## ✨ Features
 
-- **🤖 Intelligent Tool Detection**: Context-aware tool execution with confidence-based triggering  
-- **🚫 Anti-Hallucination**: Robust measures to prevent fabricated responses
-- **💬 Conversation Management**: Store, search, and retrieve conversation history
-- **📊 Database Analytics**: Get insights and statistics about conversation data
-- **🔍 Smart Search**: Find specific conversations with intelligent query processing
-- **⚡ Modular Architecture**: Clean, maintainable code structure
-
-## 🏗️ Architecture
-
-The APE MCP server is built with a modular architecture:
-
-```
-ape/
-├── mcp/                          # MCP server modules
-│   ├── __init__.py              # Package initialization
-│   ├── session_manager.py      # Database operations & session management
-│   ├── tool_executor.py        # Tool detection & execution logic
-│   ├── implementations.py      # Core tool implementation functions
-│   └── server.py               # MCP server configuration & entry point
-├── config.py                   # Configuration settings
-├── session.py                  # Session utilities
-└── utils.py                    # Utility functions
-
-tests/
-├── unit/                       # Unit tests
-│   ├── test_modular_structure.py
-│   ├── test_pattern_fixes.py
-│   └── ...                     # Other test files
-└── integration/                # Integration tests
-
-mcp_server.py                   # Main entry point
-```
+- 🔗 **MCP Protocol Compliance**: Built with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+- 💾 **Persistent Sessions**: SQLite-backed conversation storage and retrieval
+- 🛠️ **8 Powerful Tools**: Database queries, conversation search, history management
+- 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
+- 📊 **Context Management**: Advanced context tracking across conversations
+- 🎯 **CLI Interface**: Rich command-line experience with real-time tool feedback
+- 🔍 **Conversation Search**: Full-text search across conversation history
+- 📈 **Session Analytics**: Detailed session statistics and interaction tracking
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.8+
-- Ollama with a compatible model (e.g., `gemma2:4b`)
+- **Python 3.11+**
+- **Conda** (recommended for environment management)
+- **Ollama** (for LLM inference)
 
 ### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd ape
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Start Ollama** (if not already running):
-   ```bash
-   ollama serve
-   ```
-
-4. **Pull a compatible model:**
-   ```bash
-   ollama pull gemma2:4b
-   ```
-
-### Running the Server
-
-**As a standalone MCP server:**
-```bash
-python mcp_server.py
-```
-
-**For development/testing:**
-```bash
-python -m ape.mcp.server
-```
-
-## 🛠️ Tools & Capabilities
-
-### Core Tools
-
-1. **`get_conversation_history`**
-   - Retrieve recent conversation messages
-   - Filter by session ID or get global history
-   - Configurable message limits
-
-2. **`search_conversations`**
-   - Search through conversation content
-   - Intelligent query extraction
-   - Relevance-based results
-
-3. **`get_database_info`**
-   - Database schema information
-   - Message and session statistics
-   - Recent activity analytics
-
-4. **`chat_with_llm`**
-   - Enhanced chat with context awareness
-   - Automatic tool execution when appropriate
-   - Anti-hallucination measures
-
-### Tool Detection Examples
-
-The system intelligently detects when to use tools:
+#### 1. Setup Conda Environment
 
 ```bash
-# ✅ Triggers history tool
-"get the last 5 interactions from the database"
-"show me recent conversations" 
-
-# ✅ Triggers search tool
-"search for hello world"
-"find messages about python"
-
-# ✅ Triggers database tool  
-"how many total messages?"
-"database statistics"
-
-# ❌ Conversational (no tool triggered)
-"can you present that information as a markdown table?"
-"thanks for the help"
+# Create and activate conda environment
+conda create -n ape python=3.11
+conda activate ape
 ```
+
+#### 2. Install Ollama
+
+**Linux/WSL:**
+```bash
+curl -fsSL https://ollama.ai/install.sh | sh
+```
+
+**macOS:**
+```bash
+brew install ollama
+```
+
+**Windows:**
+Download from [ollama.ai](https://ollama.ai/download)
+
+#### 3. Pull Required LLM Model
+
+```bash
+# Start Ollama service
+ollama serve
+
+# In another terminal, pull the default model
+ollama pull qwen3:14b
+
+# Or use a lighter model for testing
+ollama pull qwen3:8b
+```
+
+#### 4. Install Python Dependencies
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd ape
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Or for development
+pip install -e .
+```
+
+### Running APE
+
+#### Start the CLI Chat Interface
+
+```bash
+python cli_chat.py
+```
+
+#### Test MCP Server Functionality
+
+```bash
+python test_mcp.py
+```
+
+#### Available CLI Commands
+
+Once in the chat interface:
+
+- `/help` - Show available commands
+- `/history` - Display conversation history  
+- `/session` - Show current session information
+- `/tools` - List available MCP tools
+- `/context` - Display current session context
+- `/clear` - Clear screen
+- `/reset` - Reset session context
+- `/quit` - Exit the application
+
+## 🏗️ Project Structure
+
+```
+ape/
+├── ape/                          # Core package
+│   ├── config.py                 # Configuration settings
+│   ├── session.py                # Session management
+│   ├── utils.py                  # Utility functions
+│   ├── sessions.db               # SQLite database
+│   └── mcp/                      # MCP implementation
+│       ├── server.py             # MCP server with tool definitions
+│       ├── implementations.py    # Tool implementation functions
+│       └── session_manager.py    # Session management bridge
+├── cli_chat.py                   # Main CLI interface (primary entry point)
+├── mcp_server.py                 # MCP server entry point
+├── tests/                        # Test suite
+│   ├── unit/                     # Unit tests
+│   └── integration/              # Integration tests
+├── requirements.txt              # Python dependencies
+├── pyproject.toml               # Project configuration
+└── logs/                        # Application logs
+```
+
+### Core Components
+
+#### **CLI Interface** (`cli_chat.py`)
+- **ContextManager**: Tracks tool results and session context
+- **APEChatCLI**: Main chat interface with MCP integration
+- **Real-time tool execution** with visual feedback
+- **Dynamic system prompts** based on available capabilities
+
+#### **MCP Server** (`ape/mcp/`)
+- **Protocol-compliant server** using official SDK
+- **8 registered tools** for conversation and database management
+- **Resource and prompt management** capabilities
+- **Proper error handling** and logging
+
+#### **Session Management** (`ape/session.py`)
+- **SQLite-backed persistence** with structured schema
+- **JSON serialization** for complex data types
+- **Thread-safe operations** with transaction support
+
+## 🛠️ MCP Tools & Capabilities
+
+APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompts**:
+
+### 🔧 Available Tools (8)
+
+| Tool | Description | Use Case |
+|------|-------------|----------|
+| `execute_database_query` | Execute SQL queries (SELECT/INSERT/UPDATE/DELETE) | Database operations and analytics |
+| `get_conversation_history` | Retrieve conversation history by session | Context retrieval and review |
+| `get_database_info` | Database schema and statistics | System introspection |
+| `search_conversations` | Full-text search across conversations | Finding specific discussions |
+| `list_available_tools` | Tool introspection and capabilities | Understanding available functionality |
+| `get_last_N_user_interactions` | Recent user messages | Understanding user patterns |
+| `get_last_N_tool_interactions` | Recent tool usage | Tool usage analytics |
+| `get_last_N_agent_interactions` | Recent AI responses | Response quality analysis |
+
+### 📊 Resources
+
+- **Session data**: Persistent conversation storage
+- **Tool results**: Cached execution results with metadata
+- **Context data**: Extracted values and session analytics
+
+### 💬 Prompts
+
+- **Dynamic system prompts**: Generated based on available tools and context
+- **Interactive templates**: Context-aware conversation starters
+- **Tool-specific prompts**: Optimized for different tool categories
+
+## ⚙️ Configuration
+
+### Configuration File (`ape/config.py`)
+
+APE uses a Python configuration file with sensible defaults. No environment variables need to be exported unless you want to override the defaults:
+
+```python
+# Current default settings in ape/config.py
+LLM_MODEL = "qwen3:14b"                    # Active LLM model
+OLLAMA_BASE_URL = "http://localhost:11434" # Ollama server URL
+LOG_LEVEL = "DEBUG"                        # Logging verbosity
+UI_THEME = "dark"                          # Interface theme
+SHOW_THOUGHTS = True                       # Display AI reasoning
+PORT = 8000                                # Server port
+```
+
+### Optional Environment Variable Overrides
+
+If you want to customize settings without modifying the code, you can set these environment variables:
+
+```bash
+# Optional: Override defaults with environment variables
+export LLM_MODEL="qwen3:8b"               # Use lighter model
+export OLLAMA_BASE_URL="http://remote:11434"  # Remote Ollama server
+export LOG_LEVEL="INFO"                   # Less verbose logging
+export UI_THEME="light"                   # Light theme
+export SHOW_THOUGHTS="false"              # Hide AI reasoning
+```
+
+### Supported LLM Models
+
+APE has been tested with various Ollama models:
+
+- **qwen3:14b** (recommended) - Best balance of capability and performance
+- **qwen3:8b** - Lighter alternative with good tool usage
+- **llama3.1** - Tools capable but more rigid
+- **gemma3:4b** - Lighter model with basic functionality
 
 ## 🧪 Testing
 
@@ -133,134 +219,89 @@ Run the comprehensive test suite:
 # Run all tests
 pytest tests/
 
-# Run specific test modules
-python tests/unit/test_modular_structure.py
-python tests/unit/test_pattern_fixes.py
+# Run specific test categories
+pytest tests/unit/test_mcp_server.py     # MCP server tests
+pytest tests/unit/test_tool_diagnostics.py  # Tool functionality
+pytest tests/integration/               # Integration tests
 
-# Run with coverage
-pytest tests/ --cov=ape --cov-report=html
-```
-
-### Test Categories
-
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: End-to-end workflow testing  
-- **Pattern Tests**: Tool detection accuracy
-- **Anti-hallucination Tests**: Preventing false responses
-
-## 📁 Project Structure
-
-### Modular Components
-
-- **`SessionManager`**: Handles all database operations and session persistence
-- **`ToolExecutor`**: Manages tool detection logic and execution decisions  
-- **`Implementations`**: Core tool functions that bypass MCP decoration issues
-- **`Server`**: MCP server configuration and tool registration
-
-### Key Benefits
-
-- **Maintainability**: Clear separation of concerns
-- **Testability**: Each component can be tested independently
-- **Extensibility**: Easy to add new tools or modify existing ones
-- **Performance**: Optimized database operations and tool detection
-
-## ⚙️ Configuration
-
-Key configuration options in `ape/mcp/implementations.py`:
-
-```python
-# Database
-DB_PATH = "ape/sessions.db"
-
-# LLM Settings  
-LLM_MODEL = "gemma2:4b"
-OLLAMA_HOST = "http://localhost:11434"
+# Test MCP connectivity
+python test_mcp.py
 ```
 
 ## 🔧 Development
 
 ### Adding New Tools
 
-1. **Add implementation function** in `implementations.py`:
-   ```python
-   async def my_new_tool_impl(param: str) -> str:
-       # Your implementation
-       return result
-   ```
+1. **Define tool schema** in `ape/mcp/server.py`:
+```python
+types.Tool(
+    name="your_tool_name",
+    description="Tool description",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "param": {"type": "string", "description": "Parameter description"}
+        },
+        "required": ["param"]
+    }
+)
+```
 
-2. **Add tool detection** in `tool_executor.py`:
-   ```python
-   # Add patterns to should_use_tool()
-   if "my_pattern" in message_lower:
-       return {"tool": "my_tool", "confidence": "high"}
-   ```
+2. **Implement function** in `ape/mcp/implementations.py`:
+```python
+async def your_tool_name_impl(param: str) -> str:
+    # Implementation here
+    return result
+```
 
-3. **Register MCP tool** in `server.py`:
-   ```python
-   @mcp.tool()
-   async def my_new_tool(param: str) -> str:
-       return await my_new_tool_impl(param)
-   ```
+3. **Register handler** in `ape/mcp/server.py`:
+```python
+elif name == "your_tool_name":
+    result = await your_tool_name_impl(arguments.get("param"))
+    return [types.TextContent(type="text", text=result)]
+```
 
-### Code Quality
+### Database Schema
 
-- **Formatting**: `black .`
-- **Type checking**: `mypy ape/`
-- **Linting**: `pylint ape/`
+The system uses a simple but effective SQLite schema:
 
-## 📊 Performance Metrics
+```sql
+CREATE TABLE history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,           -- 'user', 'assistant', 'system'
+    content TEXT NOT NULL,
+    images TEXT,                  -- JSON serialized image data
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
 
-**Current Performance (Phase 2 Complete):**
-- ✅ **Tool Detection Accuracy**: 100%
-- ✅ **Anti-hallucination**: 100% (no false data)
-- ✅ **Pattern Recognition**: 95% success rate
-- ✅ **Integration Tests**: 95% success rate
-- ✅ **Over-aggressive Tool Triggering**: Reduced by 85%
+## 📖 Documentation
+
+- [Model Context Protocol Documentation](https://github.com/modelcontextprotocol/python-sdk)
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
+- [Ollama Documentation](https://ollama.ai/docs)
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Ensure all tests pass
-5. Submit a pull request
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and add tests
+4. Run the test suite: `pytest tests/`
+5. Commit your changes: `git commit -m 'Add amazing feature'`
+6. Push to the branch: `git push origin feature/amazing-feature`
+7. Open a Pull Request
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Troubleshooting
+## 🙏 Acknowledgments
 
-### Common Issues
-
-**Import errors:**
-```bash
-# Ensure you're in the project root
-export PYTHONPATH=$PWD:$PYTHONPATH
-```
-
-**Database issues:**
-```bash
-# Reset database
-rm ape/sessions.db
-# Restart server to recreate
-```
-
-**Ollama connectivity:**
-```bash
-# Check Ollama status
-ollama list
-curl http://localhost:11434/api/tags
-```
-
-## 🎯 Roadmap
-
-- [ ] Advanced search with vector embeddings
-- [ ] Multi-model support
-- [ ] Real-time conversation streaming
-- [ ] Enhanced conversation analytics
-- [ ] Plugin architecture for custom tools
+- [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) - The official Python SDK that powers our MCP implementation
+- [Ollama](https://ollama.ai/) - Local LLM inference engine
+- [Loguru](https://github.com/Delgan/loguru) - Elegant logging solution
 
 ---
 
-*APE MCP Server - Built for intelligent, reliable conversation management* 🚀
+**APE - Bringing conversational AI to the next level with the Model Context Protocol** 🚀

@@ -3,55 +3,117 @@
 import sqlite3
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from loguru import logger
+
+from .session_manager import get_session_manager
 
 # Configuration
 DB_PATH = "ape/sessions.db"
 
 
-async def execute_database_query_impl(sql_query: str) -> str:
-    """Implementation of execute_database_query without MCP decoration."""
+async def check_table_exists(table_name: str) -> bool:
+    """Check if a table exists in the database."""
     try:
-        # Security: Only allow SELECT statements
-        if not sql_query.strip().upper().startswith('SELECT'):
-            return "Error: Only SELECT queries are allowed for security reasons."
-        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        cursor.execute(sql_query)
-        
-        # Get column names
-        columns = [description[0] for description in cursor.description]
-        
-        # Fetch results
-        rows = cursor.fetchall()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        exists = cursor.fetchone() is not None
         conn.close()
         
-        if not rows:
-            return "Query executed successfully, but no results found."
+        return exists
+    except Exception as e:
+        logger.error(f"Error checking table existence: {e}")
+        return False
+
+
+async def execute_database_query_impl(sql_query: str) -> str:
+    """Implementation of execute_database_query without MCP decoration."""
+    logger.info(f"🗃️ [IMPL] Executing database query: {sql_query[:100]}...")
+    
+    # Validate input
+    if not sql_query or not sql_query.strip():
+        error_msg = "ERROR: Empty or invalid SQL query provided"
+        logger.error(f"💥 [IMPL] {error_msg}")
+        return error_msg
+    
+    try:
+        # For non-SELECT queries, check table existence first
+        if not sql_query.strip().upper().startswith('SELECT'):
+            # Extract table name (basic extraction, could be improved)
+            words = sql_query.split()
+            table_idx = -1
+            for i, word in enumerate(words):
+                if word.upper() in ('INTO', 'UPDATE', 'FROM', 'TABLE'):
+                    table_idx = i + 1
+                    break
+            
+            if table_idx >= 0 and table_idx < len(words):
+                table_name = words[table_idx].strip('`;')
+                if not await check_table_exists(table_name):
+                    return f"Error: Table '{table_name}' does not exist. Available tables: {await list_tables()}"
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
         
-        # Format as JSON
-        results = []
-        for row in rows:
-            row_dict = dict(zip(columns, row))
-            results.append(row_dict)
+        # Start transaction
+        conn.execute("BEGIN")
         
-        return json.dumps(results, indent=2, default=str)
+        try:
+            # Execute the query
+            cursor.execute(sql_query)
+            
+            # For SELECT queries, return the results
+            if sql_query.strip().upper().startswith('SELECT'):
+                # Get column names
+                columns = [description[0] for description in cursor.description]
+                
+                # Fetch results
+                rows = cursor.fetchall()
+                
+                if not rows:
+                    logger.info("📊 [IMPL] Query executed successfully, no results found")
+                    result = "QUERY_RESULT: No data found - the query executed successfully but returned no rows."
+                else:
+                    # Format as JSON with clear indicator
+                    results = []
+                    for row in rows:
+                        row_dict = dict(zip(columns, row))
+                        results.append(row_dict)
+                    result = f"QUERY_RESULT: {json.dumps(results, indent=2, default=str)}"
+                    logger.info(f"✅ [IMPL] SELECT query returned {len(results)} rows")
+            else:
+                # For non-SELECT queries, commit and return affected rows
+                conn.commit()
+                affected_rows = cursor.rowcount
+                result = f"Query executed successfully. Rows affected: {affected_rows}"
+                logger.info(f"✅ [IMPL] Non-SELECT query completed successfully, {affected_rows} rows affected")
+            
+            return result
+            
+        except Exception as e:
+            # Rollback on error
+            conn.rollback()
+            raise e
+            
+        finally:
+            conn.close()
         
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"💥 [IMPL] Database error: {e}")
         return f"Database error: {str(e)}"
     except Exception as e:
-        logger.error(f"Error executing database query: {e}")
+        logger.error(f"💥 [IMPL] Error executing database query: {e}")
         return f"Error executing database query: {str(e)}"
 
 
 async def get_conversation_history_impl(session_id: str = None, limit: int = 10) -> str:
     """Implementation of get_conversation_history without MCP decoration."""
+    logger.info(f"📚 [IMPL] Getting conversation history: session_id={session_id}, limit={limit}")
+    
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -80,6 +142,7 @@ async def get_conversation_history_impl(session_id: str = None, limit: int = 10)
         conn.close()
         
         if not rows:
+            logger.info("📭 [IMPL] No conversation history found")
             return "No conversation history found."
         
         # Format the history
@@ -91,79 +154,107 @@ async def get_conversation_history_impl(session_id: str = None, limit: int = 10)
                 "timestamp": timestamp
             })
         
+        logger.info(f"✅ [IMPL] Conversation history retrieved successfully, {len(history)} messages")
         return json.dumps(history, indent=2)
         
     except Exception as e:
-        logger.error(f"Error getting conversation history: {e}")
+        logger.error(f"💥 [IMPL] Error getting conversation history: {e}")
         return f"Error getting conversation history: {str(e)}"
 
 
 async def get_database_info_impl() -> str:
     """Implementation of get_database_info without MCP decoration."""
+    logger.info("🗄️ [IMPL] Getting database information")
+    
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # Get table schema
-        cursor.execute("PRAGMA table_info(history)")
-        schema_info = cursor.fetchall()
+        # First, get list of tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
         
-        schema = {}
-        for row in schema_info:
-            column_id, name, data_type, not_null, default_value, primary_key = row
-            schema[name] = {
-                "type": data_type,
-                "not_null": bool(not_null),
-                "default": default_value,
-                "primary_key": bool(primary_key)
+        if not tables:
+            return json.dumps({
+                "database_path": DB_PATH,
+                "status": "Database exists but contains no tables",
+                "tables": []
+            }, indent=2)
+        
+        # Get schema and stats for each table
+        database_info = {
+            "database_path": DB_PATH,
+            "tables": {}
+        }
+        
+        for (table_name,) in tables:
+            # Get table schema
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            
+            schema = {}
+            for col in columns:
+                col_id, name, data_type, not_null, default_value, primary_key = col
+                schema[name] = {
+                    "type": data_type,
+                    "not_null": bool(not_null),
+                    "default": default_value,
+                    "primary_key": bool(primary_key)
+                }
+            
+            # Get row count
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            row_count = cursor.fetchone()[0]
+            
+            database_info["tables"][table_name] = {
+                "schema": schema,
+                "row_count": row_count
             }
-        
-        # Get statistics
-        cursor.execute("SELECT COUNT(*) FROM history")
-        total_messages = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(DISTINCT session_id) FROM history")
-        total_sessions = cursor.fetchone()[0]
-        
-        cursor.execute("""
-            SELECT role, COUNT(*) 
-            FROM history 
-            GROUP BY role
-        """)
-        role_counts = dict(cursor.fetchall())
-        
-        # Get recent activity (last 7 days)
-        cursor.execute("""
-            SELECT DATE(timestamp) as date, COUNT(*) as count
-            FROM history 
-            WHERE timestamp >= datetime('now', '-7 days')
-            GROUP BY DATE(timestamp)
-            ORDER BY date DESC
-        """)
-        recent_activity = dict(cursor.fetchall())
+            
+            # If it's the history table, get additional stats
+            if table_name == 'history':
+                cursor.execute("""
+                    SELECT role, COUNT(*) 
+                    FROM history 
+                    GROUP BY role
+                """)
+                role_counts = dict(cursor.fetchall())
+                
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT session_id) 
+                    FROM history
+                """)
+                session_count = cursor.fetchone()[0]
+                
+                cursor.execute("""
+                    SELECT DATE(timestamp) as date, COUNT(*) as count
+                    FROM history 
+                    WHERE timestamp >= datetime('now', '-7 days')
+                    GROUP BY DATE(timestamp)
+                    ORDER BY date DESC
+                """)
+                recent_activity = dict(cursor.fetchall())
+                
+                database_info["tables"][table_name]["statistics"] = {
+                    "messages_by_role": role_counts,
+                    "unique_sessions": session_count,
+                    "recent_activity_7_days": recent_activity
+                }
         
         conn.close()
         
-        info = {
-            "database_path": DB_PATH,
-            "schema": schema,
-            "statistics": {
-                "total_messages": total_messages,
-                "total_sessions": total_sessions,
-                "messages_by_role": role_counts,
-                "recent_activity_7_days": recent_activity
-            }
-        }
-        
-        return json.dumps(info, indent=2)
+        logger.info(f"✅ [IMPL] Database info retrieved successfully")
+        return json.dumps(database_info, indent=2)
         
     except Exception as e:
-        logger.error(f"Error getting database info: {e}")
+        logger.error(f"💥 [IMPL] Error getting database info: {e}")
         return f"Error getting database info: {str(e)}"
 
 
 async def search_conversations_impl(query: str, limit: int = 5) -> str:
     """Implementation of search_conversations without MCP decoration."""
+    logger.info(f"🔍 [IMPL] Searching conversations for: '{query}' (limit: {limit})")
+    
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -184,6 +275,7 @@ async def search_conversations_impl(query: str, limit: int = 5) -> str:
         conn.close()
         
         if not rows:
+            logger.info(f"🔍 [IMPL] No conversations found matching: '{query}'")
             return f"No conversations found matching: {query}"
         
         # Format results
@@ -200,8 +292,244 @@ async def search_conversations_impl(query: str, limit: int = 5) -> str:
                 "relevance": "Contains: " + query
             })
         
+        logger.info(f"✅ [IMPL] Search completed successfully, {len(results)} results found")
         return json.dumps(results, indent=2)
         
     except Exception as e:
-        logger.error(f"Error searching conversations: {e}")
-        return f"Error searching conversations: {str(e)}" 
+        logger.error(f"💥 [IMPL] Error searching conversations: {e}")
+        return f"Error searching conversations: {str(e)}"
+
+
+async def list_available_tools_impl() -> str:
+    """Implementation of the list_available_tools tool."""
+    try:
+        logger.info("🔧 [IMPL] Getting list of available tools")
+        
+        tools = [
+            {
+                "name": "execute_database_query",
+                "description": "Execute a custom SQL query on the conversation database",
+                "example": "SELECT COUNT(*) FROM messages WHERE role = 'user'"
+            },
+            {
+                "name": "get_conversation_history",
+                "description": "Retrieve recent conversation history from the database",
+                "example": "Get last 10 messages from current session"
+            },
+            {
+                "name": "get_database_info",
+                "description": "Get information about the conversation database schema and statistics",
+                "example": "Show database structure and message counts"
+            },
+            {
+                "name": "search_conversations",
+                "description": "Search through conversation history using text matching",
+                "example": "Find messages containing 'python'"
+            },
+            {
+                "name": "list_available_tools",
+                "description": "Get information about all available MCP tools",
+                "example": "Show all tools and their descriptions"
+            },
+            {
+                "name": "get_last_N_user_interactions",
+                "description": "Get the last N user messages from the current session",
+                "example": "Show the last 3 user messages"
+            },
+            {
+                "name": "get_last_N_tool_interactions", 
+                "description": "Get the last N tool execution results from the current session",
+                "example": "Show the last 3 tool executions"
+            },
+            {
+                "name": "get_last_N_agent_interactions",
+                "description": "Get the last N agent responses from the current session", 
+                "example": "Show the last 3 agent responses"
+            }
+        ]
+        
+        # Format the response nicely
+        response = "Available MCP Tools:\n\n"
+        for tool in tools:
+            response += f"📍 {tool['name']}\n"
+            response += f"   Description: {tool['description']}\n"
+            response += f"   Example usage: {tool['example']}\n\n"
+            
+        logger.info("✅ [IMPL] Tool list retrieved successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [IMPL] Error getting tool list: {e}")
+        raise ValueError(f"Failed to get tool list: {str(e)}")
+
+
+async def get_last_N_user_interactions_impl(n: int = 5, session_id: str = None) -> str:
+    """Implementation of the get_last_N_user_interactions tool."""
+    try:
+        logger.info(f"👤 [IMPL] Getting last {n} user interactions for session: {session_id}")
+        
+        # Build the query
+        query = "SELECT content, timestamp FROM history WHERE role = 'user'"
+        params = []
+        
+        if session_id:
+            query += " AND session_id = ?"
+            params.append(session_id)
+            
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(n)
+        
+        # Execute query using direct sqlite connection
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        rows = cursor.execute(query, params).fetchall()
+        conn.close()
+        
+        if not rows:
+            return f"No user interactions found for session: {session_id or 'any session'}"
+        
+        # Format results
+        result = {
+            "session_filter": session_id or "all sessions",
+            "user_interactions_count": len(rows),
+            "interactions": []
+        }
+        
+        for content, timestamp in reversed(rows):  # Reverse to show chronological order
+            result["interactions"].append({
+                "content": content,
+                "timestamp": timestamp
+            })
+        
+        response = f"Last {len(rows)} User Interactions:\n\n"
+        for i, interaction in enumerate(result["interactions"], 1):
+            response += f"{i}. [{interaction['timestamp']}]\n"
+            response += f"   User: {interaction['content']}\n\n"
+        
+        logger.info("✅ [IMPL] User interactions retrieved successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [IMPL] Error getting user interactions: {e}")
+        raise ValueError(f"Failed to get user interactions: {str(e)}")
+
+
+async def get_last_N_tool_interactions_impl(n: int = 5, session_id: str = None) -> str:
+    """Implementation of the get_last_N_tool_interactions tool."""
+    try:
+        logger.info(f"🔧 [IMPL] Getting last {n} tool interactions for session: {session_id}")
+        
+        # Build the query
+        query = "SELECT content, timestamp FROM history WHERE role = 'tool'"
+        params = []
+        
+        if session_id:
+            query += " AND session_id = ?"
+            params.append(session_id)
+            
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(n)
+        
+        # Execute query using direct sqlite connection
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        rows = cursor.execute(query, params).fetchall()
+        conn.close()
+        
+        if not rows:
+            return f"No tool interactions found for session: {session_id or 'any session'}"
+        
+        # Format results
+        result = {
+            "session_filter": session_id or "all sessions",
+            "tool_interactions_count": len(rows),
+            "interactions": []
+        }
+        
+        for content, timestamp in reversed(rows):  # Reverse to show chronological order
+            result["interactions"].append({
+                "content": content,
+                "timestamp": timestamp
+            })
+        
+        response = f"Last {len(rows)} Tool Interactions:\n\n"
+        for i, interaction in enumerate(result["interactions"], 1):
+            response += f"{i}. [{interaction['timestamp']}]\n"
+            # Try to extract tool name from content if it's formatted
+            content_preview = interaction['content'][:100] + "..." if len(interaction['content']) > 100 else interaction['content']
+            response += f"   Tool Result: {content_preview}\n\n"
+        
+        logger.info("✅ [IMPL] Tool interactions retrieved successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [IMPL] Error getting tool interactions: {e}")
+        raise ValueError(f"Failed to get tool interactions: {str(e)}")
+
+
+async def get_last_N_agent_interactions_impl(n: int = 5, session_id: str = None) -> str:
+    """Implementation of the get_last_N_agent_interactions tool."""
+    try:
+        logger.info(f"🤖 [IMPL] Getting last {n} agent interactions for session: {session_id}")
+        
+        # Build the query
+        query = "SELECT content, timestamp FROM history WHERE role = 'assistant'"
+        params = []
+        
+        if session_id:
+            query += " AND session_id = ?"
+            params.append(session_id)
+            
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(n)
+        
+        # Execute query using direct sqlite connection
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        rows = cursor.execute(query, params).fetchall()
+        conn.close()
+        
+        if not rows:
+            return f"No agent interactions found for session: {session_id or 'any session'}"
+        
+        # Format results
+        result = {
+            "session_filter": session_id or "all sessions",
+            "agent_interactions_count": len(rows),
+            "interactions": []
+        }
+        
+        for content, timestamp in reversed(rows):  # Reverse to show chronological order
+            result["interactions"].append({
+                "content": content,
+                "timestamp": timestamp
+            })
+        
+        response = f"Last {len(rows)} Agent Interactions:\n\n"
+        for i, interaction in enumerate(result["interactions"], 1):
+            response += f"{i}. [{interaction['timestamp']}]\n"
+            content_preview = interaction['content'][:100] + "..." if len(interaction['content']) > 100 else interaction['content']
+            response += f"   Agent: {content_preview}\n\n"
+        
+        logger.info("✅ [IMPL] Agent interactions retrieved successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ [IMPL] Error getting agent interactions: {e}")
+        raise ValueError(f"Failed to get agent interactions: {str(e)}")
+
+
+async def list_tables() -> str:
+    """Get a list of all tables in the database."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        return ", ".join(tables) if tables else "No tables found"
+    except Exception as e:
+        logger.error(f"Error listing tables: {e}")
+        return "Error listing tables" 
