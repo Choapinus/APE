@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import json
+import hmac, hashlib
 from datetime import datetime
 from typing import Any, Dict, List
 
 import ollama
 from loguru import logger
 
-from ape.config import (
-    LLM_MODEL,
-    OLLAMA_BASE_URL,
-    TEMPERATURE,
-    MAX_TOOLS_ITERATIONS,
-)
+from ape.settings import settings
 from ape.cli.context_manager import ContextManager
 from ape.cli.mcp_client import MCPClient
 
@@ -181,7 +177,25 @@ class ChatAgent:
             logger.info(f"🔧 Executing tool {fn} with args {arguments}")
             try:
                 res = await self.mcp_client.call_tool(fn, arguments)
-                text = res.content[0].text if res.content else "No results returned"
+                raw = res.content[0].text if res.content else ""
+
+                # Verify HMAC envelope
+                verified = False
+                payload_text = ""
+                try:
+                    env = json.loads(raw)
+                    rid = env.get("result_id")
+                    payload_text = env.get("payload", "")
+                    sig = env.get("sig", "")
+                    if rid and payload_text is not None and sig == self._sign(rid, payload_text):
+                        verified = True
+                except Exception:
+                    pass
+
+                if not verified:
+                    text = "❌ ERROR: Tool result signature verification failed."
+                else:
+                    text = payload_text
             except Exception as exc:
                 text = f"ERROR executing tool: {exc}"
 
@@ -211,8 +225,8 @@ class ChatAgent:
             {"role": "user", "content": message},
         ]
 
-        client = ollama.AsyncClient(host=OLLAMA_BASE_URL)
-        max_iter = MAX_TOOLS_ITERATIONS
+        client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
+        max_iter = settings.MAX_TOOLS_ITERATIONS
         iteration = 0
         cumulative_resp = ""
 
@@ -221,10 +235,10 @@ class ChatAgent:
             has_tool_calls = False
 
             stream = await client.chat(
-                model=LLM_MODEL,
+                model=settings.LLM_MODEL,
                 messages=exec_conversation,
                 tools=capabilities["tools"],
-                options={"temperature": TEMPERATURE},
+                options={"temperature": settings.TEMPERATURE},
                 stream=True,
             )
 
@@ -257,4 +271,7 @@ class ChatAgent:
                     cumulative_resp += current_chunk
                 break
 
-        return cumulative_resp 
+        return cumulative_resp
+
+    def _sign(self, rid: str, payload: str) -> str:
+        return hmac.new(settings.MCP_HMAC_KEY.encode(), f"{rid}{payload}".encode(), hashlib.sha256).hexdigest() 

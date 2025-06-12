@@ -21,7 +21,7 @@ from ape.mcp.session_manager import get_session_manager
 from ape.cli.context_manager import ContextManager
 from ape.cli.mcp_client import MCPClient
 from ape.cli.chat_agent import ChatAgent
-from ape.config import OLLAMA_BASE_URL
+from ape.settings import settings
 
 
 class APEChatCLI:
@@ -298,7 +298,7 @@ AUTONOMOUS OPERATION GUIDELINES:
 7. **NO ASSUMPTIONS**: Do not assume what data "should" look like - only use what you actually receive"""
             
             # Increased iteration limits for autonomous operation
-            max_iterations = MAX_TOOLS_ITERATIONS  # Allow for truly complex multi-step tasks
+            max_iterations = settings.MAX_TOOLS_ITERATIONS
             current_iteration = 0
             cumulative_response = ""
             
@@ -309,17 +309,17 @@ AUTONOMOUS OPERATION GUIDELINES:
                 {"role": "user", "content": message}
             ]
             
-            client = ollama.AsyncClient(host=OLLAMA_BASE_URL)
+            client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
             
             while current_iteration < max_iterations:
                 current_chunk = ""
                 has_tool_calls = False
                 
                 stream = await client.chat(
-                    model=LLM_MODEL,
+                    model=settings.LLM_MODEL,
                     messages=execution_conversation,
                     tools=capabilities["tools"],
-                    options={"temperature": TEMPERATURE},  # Slightly higher for more creative problem solving
+                    options={"temperature": settings.TEMPERATURE},
                     stream=True
                 )
                 
@@ -671,7 +671,7 @@ async def main():
     
     # Check if Ollama is available
     try:
-        client = ollama.Client(host=OLLAMA_BASE_URL)
+        client = ollama.Client(host=str(settings.OLLAMA_BASE_URL))
         models = client.list()
         if not models.get('models'):
             print("⚠️  Warning: No Ollama models found. Make sure Ollama is running and has models installed.")

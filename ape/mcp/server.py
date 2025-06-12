@@ -3,6 +3,9 @@
 import json
 import asyncio
 from typing import Any, Sequence
+import hmac, hashlib
+from uuid import uuid4
+import os
 
 import mcp.types as types
 from mcp.server.models import InitializationOptions
@@ -12,16 +15,7 @@ import mcp.server.stdio
 from loguru import logger
 
 from .session_manager import get_session_manager
-from .implementations import (
-    execute_database_query_impl,
-    get_conversation_history_impl,
-    get_database_info_impl, 
-    search_conversations_impl,
-    list_available_tools_impl,
-    get_last_N_user_interactions_impl,
-    get_last_N_tool_interactions_impl,
-    get_last_N_agent_interactions_impl
-)
+from .plugin import discover
 
 
 def create_mcp_server() -> Server:
@@ -29,136 +23,19 @@ def create_mcp_server() -> Server:
     
     # Initialize the MCP server using the official SDK
     server = Server("ape-server")
+    registry = discover()
+
+    SECRET = os.environ.get("MCP_HMAC_KEY", "dev-secret").encode()
+
+    def _sign(result_id: str, payload: str) -> str:
+        return hmac.new(SECRET, f"{result_id}{payload}".encode(), hashlib.sha256).hexdigest()
 
     @server.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
         """List available tools."""
         return [
-            types.Tool(
-                name="execute_database_query",
-                description="Execute a SQL query on the conversation database. Supports SELECT, INSERT, UPDATE, DELETE, and table management operations.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "sql_query": {
-                            "type": "string",
-                            "description": "SQL query to execute (supports SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, etc.)"
-                        },
-                        "query": {
-                            "type": "string", 
-                            "description": "Alternative parameter name for SQL query (use sql_query preferred)"
-                        }
-                    },
-                    "required": ["sql_query"]
-                }
-            ),
-            types.Tool(
-                name="get_conversation_history",
-                description="Retrieve recent conversation history from the database",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string",
-                            "description": "Session ID to get history for (optional)"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Number of recent messages to retrieve (default: 10)",
-                            "default": 10
-                        }
-                    }
-                }
-            ),
-            types.Tool(
-                name="get_database_info",
-                description="Get information about the conversation database schema and statistics",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
-            ),
-            types.Tool(
-                name="search_conversations",
-                description="Search through conversation history using text matching",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Text to search for in conversation content"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of results to return (default: 5)",
-                            "default": 5
-                        }
-                    },
-                    "required": ["query"]
-                }
-            ),
-            types.Tool(
-                name="list_available_tools",
-                description="Get information about all available MCP tools",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
-            ),
-            types.Tool(
-                name="get_last_N_user_interactions",
-                description="Get the last N user messages from the current session to understand recent user requests",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "n": {
-                            "type": "integer",
-                            "description": "Number of recent user interactions to retrieve (default: 5)",
-                            "default": 5
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Session ID to get interactions for (optional, uses current session if not provided)"
-                        }
-                    }
-                }
-            ),
-            types.Tool(
-                name="get_last_N_tool_interactions",
-                description="Get the last N tool execution results from the current session to see what tools were recently used",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "n": {
-                            "type": "integer",
-                            "description": "Number of recent tool interactions to retrieve (default: 5)",
-                            "default": 5
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Session ID to get interactions for (optional, uses current session if not provided)"
-                        }
-                    }
-                }
-            ),
-            types.Tool(
-                name="get_last_N_agent_interactions",
-                description="Get the last N agent responses from the current session to see recent assistant outputs",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "n": {
-                            "type": "integer",
-                            "description": "Number of recent agent interactions to retrieve (default: 5)",
-                            "default": 5
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Session ID to get interactions for (optional, uses current session if not provided)"
-                        }
-                    }
-                }
-            )
+            types.Tool(name=name, description=meta["description"], inputSchema=meta["inputSchema"])
+            for name, meta in registry.items()
         ]
 
     @server.call_tool()
@@ -172,79 +49,27 @@ def create_mcp_server() -> Server:
         logger.info(f"🔧 [MCP SERVER] Tool called: {name} with arguments: {arguments}")
         
         try:
-            if name == "execute_database_query":
-                # Handle both parameter names for compatibility
-                sql_query = arguments.get("sql_query") or arguments.get("query", "")
-                
-                if not sql_query.strip():
-                    error_msg = "❌ ERROR: No SQL query provided. Please provide a valid SQL query."
-                    logger.error(f"📊 [MCP SERVER] {error_msg}")
-                    return [types.TextContent(type="text", text=error_msg)]
-                
-                logger.info(f"📊 [MCP SERVER] Executing SQL query: {sql_query[:100]}...")
-                result = await execute_database_query_impl(sql_query)
-                logger.info(f"✅ [MCP SERVER] SQL query completed, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "get_conversation_history":
-                session_id = arguments.get("session_id")
-                limit = arguments.get("limit", 10)
-                logger.info(f"📚 [MCP SERVER] Getting conversation history: session_id={session_id}, limit={limit}")
-                result = await get_conversation_history_impl(session_id, limit)
-                logger.info(f"✅ [MCP SERVER] Conversation history retrieved, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "get_database_info":
-                logger.info(f"🗄️ [MCP SERVER] Getting database info")
-                result = await get_database_info_impl()
-                logger.info(f"✅ [MCP SERVER] Database info retrieved, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "search_conversations":
-                query = arguments.get("query", "")
-                limit = arguments.get("limit", 5)
-                logger.info(f"🔍 [MCP SERVER] Searching conversations: query='{query}', limit={limit}")
-                result = await search_conversations_impl(query, limit)
-                logger.info(f"✅ [MCP SERVER] Search completed, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "list_available_tools":
-                logger.info("🔧 [MCP SERVER] Listing available tools")
-                result = await list_available_tools_impl()
-                logger.info(f"✅ [MCP SERVER] Tool list retrieved, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "get_last_N_user_interactions":
-                n = arguments.get("n", 5)
-                session_id = arguments.get("session_id")
-                logger.info(f"👤 [MCP SERVER] Getting last {n} user interactions for session: {session_id}")
-                result = await get_last_N_user_interactions_impl(n, session_id)
-                logger.info(f"✅ [MCP SERVER] User interactions retrieved, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "get_last_N_tool_interactions":
-                n = arguments.get("n", 5)
-                session_id = arguments.get("session_id")
-                logger.info(f"🔧 [MCP SERVER] Getting last {n} tool interactions for session: {session_id}")
-                result = await get_last_N_tool_interactions_impl(n, session_id)
-                logger.info(f"✅ [MCP SERVER] Tool interactions retrieved, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            elif name == "get_last_N_agent_interactions":
-                n = arguments.get("n", 5)
-                session_id = arguments.get("session_id")
-                logger.info(f"🤖 [MCP SERVER] Getting last {n} agent interactions for session: {session_id}")
-                result = await get_last_N_agent_interactions_impl(n, session_id)
-                logger.info(f"✅ [MCP SERVER] Agent interactions retrieved, result length: {len(result)} chars")
-                return [types.TextContent(type="text", text=result)]
-                
-            else:
-                logger.error(f"❌ [MCP SERVER] Unknown tool requested: {name}")
-                raise ValueError(f"Unknown tool: {name}")
-                
+            if name not in registry:
+                error_msg = f"❌ ERROR: Tool '{name}' not found."
+                logger.error(error_msg)
+                return [types.TextContent(type="text", text=error_msg)]
+
+            impl_fn = registry[name]["fn"]
+            # ensure kwargs compatible
+            result_text = await impl_fn(**arguments)
+
+            rid = str(uuid4())
+            envelope = {
+                "result_id": rid,
+                "payload": result_text,
+                "sig": _sign(rid, result_text),
+            }
+
+            return [types.TextContent(type="text", text=json.dumps(envelope))]
+
         except Exception as e:
-            logger.error(f"💥 [MCP SERVER] Error executing tool {name}: {e}")
-            return [types.TextContent(type="text", text=f"Error executing tool: {str(e)}")]
+            logger.error(f"💥 [MCP SERVER] Error handling tool {name}: {e}")
+            return [types.TextContent(type="text", text=f"Error executing tool {name}: {str(e)}")]
 
     @server.list_resources()
     async def handle_list_resources() -> list[types.Resource]:
