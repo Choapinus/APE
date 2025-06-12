@@ -46,4 +46,4 @@ def discover() -> Dict[str, Dict[str, Any]]:
             # Log?  simple print to avoid circular import of logger
             print(f"Failed to load tool entry-point {ep.name}: {exc}")
 
-    return _REGISTRY 
+    return _REGISTRY

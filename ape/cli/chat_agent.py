@@ -14,7 +14,12 @@ from ape.cli.mcp_client import MCPClient
 
 
 class ChatAgent:
-    """Encapsulates autonomous reasoning, tool orchestration and LLM I/O."""
+    """High-level autonomous agent.
+
+    The class is deliberately *stateless* beyond the provided `ContextManager`
+    and therefore can be instantiated multiple times in the same process (for
+    different user sessions).
+    """
 
     def __init__(
         self,
@@ -195,6 +200,7 @@ class ChatAgent:
                 if not verified:
                     text = "❌ ERROR: Tool result signature verification failed."
                 else:
+                    # if payload itself is JSON, keep as is; we can still feed string to LLM
                     text = payload_text
             except Exception as exc:
                 text = f"ERROR executing tool: {exc}"

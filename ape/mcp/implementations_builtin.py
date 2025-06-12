@@ -11,6 +11,11 @@ from ape.mcp.implementations import (
     get_last_N_agent_interactions_impl,
 )
 from ape.mcp.plugin import tool
+from ape.mcp.models import (
+    ExecuteDatabaseQueryRequest, ExecuteDatabaseQueryResponse,
+    ConversationHistoryRequest, ConversationHistoryResponse,
+    SearchConversationsRequest, GenericTextResponse,
+)
 
 # Input schemas reused from server earlier definition
 
@@ -25,8 +30,9 @@ execute_query_schema = {
 
 @tool("execute_database_query", "Execute a SQL query on the conversation database.", execute_query_schema)
 async def execute_database_query(**kwargs):
-    sql_query = kwargs.get("sql_query") or kwargs.get("query", "")
-    return await execute_database_query_impl(sql_query)
+    req = ExecuteDatabaseQueryRequest(**kwargs)
+    result_text = await execute_database_query_impl(req.normalized_query)
+    return ExecuteDatabaseQueryResponse(result=result_text).model_dump_json()
 
 history_schema = {
     "type": "object",
@@ -38,7 +44,9 @@ history_schema = {
 
 @tool("get_conversation_history", "Retrieve recent conversation history", history_schema)
 async def get_conversation_history(**kwargs):
-    return await get_conversation_history_impl(kwargs.get("session_id"), kwargs.get("limit", 10))
+    req = ConversationHistoryRequest(**kwargs)
+    result_json = await get_conversation_history_impl(req.session_id, req.limit)
+    return result_json
 
 @tool("get_database_info", "Get database schema and stats", {"type": "object", "properties": {}})
 async def get_database_info():
@@ -55,7 +63,9 @@ search_schema = {
 
 @tool("search_conversations", "Search conversation history", search_schema)
 async def search_conversations(**kwargs):
-    return await search_conversations_impl(kwargs.get("query", ""), kwargs.get("limit", 5))
+    req = SearchConversationsRequest(**kwargs)
+    result_text = await search_conversations_impl(req.query, req.limit)
+    return GenericTextResponse(result=result_text).model_dump_json()
 
 @tool("list_available_tools", "List all available tools", {"type": "object", "properties": {}})
 async def list_available_tools():

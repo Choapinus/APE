@@ -305,3 +305,70 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **APE - Bringing conversational AI to the next level with the Model Context Protocol** 🚀
+
+## Architecture Overview
+
+```mermaid
+graph TD
+  CLI["cli_chat.py (UI shell)"] --> ChatAgent
+  ChatAgent -->|"OLLAMA LLM"| Ollama[("Ollama Server")]
+  ChatAgent -->|"tool_calls"| MCPClient
+  MCPClient -->|"stdio / JSON-RPC"| MCPServer["MCP Server"]
+  MCPServer -->|"discover()"| PluginRegistry["Plugin Registry"]
+  PluginRegistry --> Builtins["Builtin Tools @tool"]
+  PluginRegistry --> Plugins["External Plugins (entry-points)"]
+  MCPServer --> SessionManager
+  SessionManager --> SQLite[("SQLite sessions.db")]
+```
+
+### Current Status (June 2025)
+
+* **Configuration**: migrated to `pydantic-settings` (`ape/settings.py`). `.env` overrides supported.
+* **CLI**: split into thin shell, `MCPClient`, `ChatAgent`, `ContextManager`.
+* **Tools**: data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`).
+* **Integrity**: MCP server wraps every tool result in an HMAC-signed envelope; `ChatAgent` verifies.
+* **Persistence**: still synchronous SQLite; async `aiosqlite` migration planned.
+
+> For detailed roadmap and open tasks see `docs/ROADMAP.md` (TBD).
+
+### Quick-start
+
+```bash
+# 1. clone and enter
+git clone https://github.com/your-org/ape.git
+cd ape
+
+# 2. create virtualenv
+python -m venv .venv && source .venv/bin/activate
+
+# 3. install deps
+pip install -r requirements.txt
+
+# 4. ensure an Ollama model is pulled (example)
+ollama pull qwen3:8b
+
+# 5. export a NON-default HMAC key (prod)
+export MCP_HMAC_KEY=$(openssl rand -hex 16)
+
+# 6. launch chat
+python cli_chat.py
+```
+
+### Configuration via `.env`
+The project reads configuration from environment variables using `pydantic-settings`.
+Create a local `.env` file at the repo root; any value there overrides the defaults.
+
+```
+# .env (example)
+PORT=8080
+LOG_LEVEL=INFO
+OLLAMA_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen3:14b
+TEMPERATURE=0.3
+MAX_TOOLS_ITERATIONS=20
+MCP_HMAC_KEY=changeme-super-secret
+```
+
+Run `python - <<'PY'
+from ape.settings import settings, Settings; print(settings.model_dump_json(indent=2))
+PY` to see the final merged configuration at runtime.

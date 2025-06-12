@@ -9,12 +9,10 @@ from mcp.client.stdio import stdio_client
 
 
 class MCPClient:
-    """Async wrapper that manages the lifecycle of an MCP stdio session.
+    """Manage an MCP session over stdio.
 
-    It hides all the boilerplate of spinning up the local *mcp_server.py* as a
-    subprocess, opening the stdio transport and exposing convenience helpers
-    that mirror the MCP RPC methods we use inside the CLI (list_tools,
-    call_tool, list_prompts, list_resources ...).
+    Public coroutines mirror the official MCP client interface but always check
+    `self.is_connected` first to avoid runtime errors.
     """
 
     def __init__(self, server_command: str = "python", server_script: str = "mcp_server.py"):

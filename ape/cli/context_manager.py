@@ -3,9 +3,24 @@ from datetime import datetime
 import json
 from loguru import logger
 
+"""Context tracking utility used by ChatAgent.
+
+The `ContextManager` stores *verifiable* tool results plus helper values (last
+session id, message counts, …) that the LLM can reference later.  It is intentionally
+kept runtime-only – it never writes to disk.
+"""
+
 
 class ContextManager:
-    """Manages context and extracted data across tool calls and user messages."""
+    """Keep per-session context that survives multiple tool calls.
+
+    Responsibilities
+    -----------------
+    1. Remember every tool invocation (name, args, result, timestamp).
+    2. Extract recurring values (e.g. `last_session_id`) so the LLM can refer to
+       them without complex JSON parsing.
+    3. Provide a compact **human readable** summary for prompt-stuffing.
+    """
 
     def __init__(self, session_id: str | None = None):
         self.session_data: Dict[str, Any] = {}
