@@ -13,8 +13,8 @@ class Settings(BaseSettings):
 
     # LLM / Ollama
     OLLAMA_BASE_URL: HttpUrl = Field("http://localhost:11434", description="Base URL of the local Ollama server")
-    LLM_MODEL: str = Field("qwen3:8b", description="Model name passed to Ollama")
-    TEMPERATURE: float = Field(0.2, description="LLM sampling temperature")
+    LLM_MODEL: str = Field("qwen3:14b", description="Model name passed to Ollama")
+    TEMPERATURE: float = Field(0.5, description="LLM sampling temperature")
     MAX_TOOLS_ITERATIONS: int = Field(15, description="Max reasoning/tool iterations per user prompt")
 
     # UI (CLI) options

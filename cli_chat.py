@@ -53,6 +53,8 @@ class APEChatCLI:
         print("  /clear    - Clear screen")
         print("  /reset    - Clear session context")
         print("  /quit     - Exit chat")
+        print("  /exit     - Exit chat")
+        print("  /q        - Exit chat")
         print("\n🧠 Intelligence: Connected to MCP server with tools:")
         print("  • Database tools for conversation management")
         print("  • Search tools for finding content")
@@ -560,6 +562,8 @@ Available commands:
   /clear    - Clear screen
   /reset    - Clear session context
   /quit     - Exit chat
+  /exit     - Exit chat
+  /q        - Exit chat
 
 🚀 Enhanced Autonomous Capabilities:
 The agent can now handle complex multi-step tasks naturally by:
@@ -605,7 +609,7 @@ The agent will use its natural reasoning to break down complex tasks!
                     
                     # Handle commands
                     if user_input.startswith('/'):
-                        if user_input == '/quit':
+                        if user_input == '/quit' or user_input == '/exit' or user_input == '/q':
                             break
                         elif user_input == '/help':
                             self.show_help()
@@ -652,7 +656,7 @@ The agent will use its natural reasoning to break down complex tasks!
                         logger.error(f"Error saving chat history: {e}")
                     
                 except KeyboardInterrupt:
-                    print("\n\n👋 Chat interrupted. Use /quit to exit gracefully.")
+                    print("\n\n👋 Chat interrupted. Use /quit or /exit or /q to exit gracefully.")
                 except Exception as e:
                     print(f"\n❌ Error: {e}")
                     logger.error(f"Chat error: {e}")

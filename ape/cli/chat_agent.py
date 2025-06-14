@@ -26,10 +26,29 @@ class ChatAgent:
         session_id: str,
         mcp_client: MCPClient,
         context_manager: ContextManager,
+        *,
+        agent_name: str = "APE",
     ) -> None:
+        """Create a new ChatAgent.
+
+        Parameters
+        ----------
+        session_id:
+            Unique identifier for the end-user session.
+        mcp_client:
+            Connected MCPClient instance.
+        context_manager:
+            Per-session context storage.
+        agent_name:
+            Human-readable identifier (e.g. "APE-1", "APE-2") used inside the
+            system prompt so that multiple agents in the same Python process
+            keep their identities separate.
+        """
+
         self.session_id = session_id
         self.mcp_client = mcp_client
         self.context_manager = context_manager
+        self.agent_name = agent_name
 
     # ------------------------------------------------------------------
     # MCP capability discovery helpers
@@ -42,6 +61,7 @@ class ChatAgent:
             logger.warning("ChatAgent.discover_capabilities(): MCP not connected")
             return capabilities
 
+        # Discover TOOLS – mandatory for proper operation
         try:
             tools_result = await self.mcp_client.list_tools()
             capabilities["tools"] = [
@@ -52,7 +72,11 @@ class ChatAgent:
                 }
                 for tool in tools_result.tools
             ]
+        except Exception as exc:
+            logger.error(f"❌ [MCP CLIENT] list_tools failed: {exc}")
 
+        # Discover PROMPTS – optional (older servers may not implement)
+        try:
             prompts_result = await self.mcp_client.list_prompts()
             capabilities["prompts"] = [
                 {
@@ -62,7 +86,12 @@ class ChatAgent:
                 }
                 for prompt in prompts_result
             ]
+        except Exception:
+            # Don't treat as fatal – just continue without prompts
+            logger.debug("MCP server does not support list_prompts – ignoring.")
 
+        # Discover RESOURCES – optional as well
+        try:
             resources_result = await self.mcp_client.list_resources()
             capabilities["resources"] = [
                 {
@@ -72,15 +101,16 @@ class ChatAgent:
                 }
                 for res in resources_result.resources
             ]
+        except Exception:
+            logger.debug("MCP server does not support list_resources – ignoring.")
 
-            logger.info(
-                "🔍 [MCP CLIENT] Discovered capabilities: "
-                + json.dumps(capabilities, indent=2)
-            )
-            return capabilities
-        except Exception as exc:
-            logger.error(f"❌ [MCP CLIENT] Error discovering capabilities: {exc}")
-            return capabilities
+        # Log final state for debugging
+        logger.info(
+            "🔍 [MCP CLIENT] Discovered capabilities (partial ok): "
+            + json.dumps(capabilities, indent=2)
+        )
+
+        return capabilities
 
     # ------------------------------------------------------------------
     async def create_dynamic_system_prompt(self, capabilities: Dict[str, Any]) -> str:
@@ -110,7 +140,7 @@ class ChatAgent:
         )
 
         return (
-            f"You are APE (Agentic Protocol Executor), an intelligent autonomous AI assistant operating within the Model Context Protocol (MCP) framework.\n\n"
+            f"You are {self.agent_name} (Agentic Protocol Executor), an intelligent autonomous AI assistant operating within the Model Context Protocol (MCP) framework.\n\n"
             "🔧 **YOUR CAPABILITIES:**\n"
             "You have access to powerful tools that allow you to:\n"
             "- Query databases and retrieve conversation data\n"
