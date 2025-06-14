@@ -7,7 +7,7 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 ## ✨ Features
 
 - 🔗 **MCP Protocol Compliance**: Built with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-- 💾 **Persistent Sessions**: SQLite-backed conversation storage and retrieval
+- 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) conversation storage and retrieval
 - 🛠️ **8 Powerful Tools**: Database queries, conversation search, history management
 - 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
 - 📊 **Context Management**: Advanced context tracking across conversations
@@ -140,7 +140,7 @@ ape/
 - **Proper error handling** and logging
 
 #### **Session Management** (`ape/session.py`)
-- **SQLite-backed persistence** with structured schema
+- **Asynchronous SQLite (aiosqlite) persistence** with structured schema
 - **JSON serialization** for complex data types
 - **Thread-safe operations** with transaction support
 
@@ -327,7 +327,7 @@ graph TD
 * **CLI**: split into thin shell, `MCPClient`, `ChatAgent`, `ContextManager`.
 * **Tools**: data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`).
 * **Integrity**: MCP server wraps every tool result in an HMAC-signed envelope; `ChatAgent` verifies.
-* **Persistence**: still synchronous SQLite; async `aiosqlite` migration planned.
+* **Persistence**: migrated to asynchronous `aiosqlite` for non-blocking DB operations.
 
 > For detailed roadmap and open tasks see `docs/ROADMAP.md` (TBD).
 

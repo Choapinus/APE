@@ -1,6 +1,13 @@
-"""Implementation functions for APE MCP tools."""
+"""Implementation functions for APE MCP tools.
 
-import sqlite3
+All database access is now asynchronous using **aiosqlite** instead of the
+standard blocking ``sqlite3`` module.  Each helper opens a connection with
+``async with aiosqlite.connect(...)`` and awaits all cursor operations.  This
+change keeps the public async signatures intact while eliminating thread
+blocking inside the event-loop.
+"""
+
+import aiosqlite
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -15,16 +22,16 @@ DB_PATH = "ape/sessions.db"
 
 
 async def check_table_exists(table_name: str) -> bool:
-    """Check if a table exists in the database."""
+    """Return *True* when ``table_name`` exists in the SQLite schema."""
+
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-        exists = cursor.fetchone() is not None
-        conn.close()
-        
-        return exists
+        async with aiosqlite.connect(DB_PATH) as conn:
+            async with conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row is not None
     except Exception as e:
         logger.error(f"Error checking table existence: {e}")
         return False
@@ -56,53 +63,52 @@ async def execute_database_query_impl(sql_query: str) -> str:
                 if not await check_table_exists(table_name):
                     return f"Error: Table '{table_name}' does not exist. Available tables: {await list_tables()}"
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Start transaction
-        conn.execute("BEGIN")
-        
-        try:
-            # Execute the query
-            cursor.execute(sql_query)
+        async with aiosqlite.connect(DB_PATH) as conn:
+            # Use WAL journal mode for better concurrency during async access
+            await conn.execute("PRAGMA journal_mode=WAL")
+            cursor = await conn.cursor()
             
-            # For SELECT queries, return the results
-            if sql_query.strip().upper().startswith('SELECT'):
-                # Get column names
-                columns = [description[0] for description in cursor.description]
+            # Start transaction
+            await conn.execute("BEGIN")
+            
+            try:
+                # Execute the query
+                await cursor.execute(sql_query)
                 
-                # Fetch results
-                rows = cursor.fetchall()
-                
-                if not rows:
-                    logger.info("📊 [IMPL] Query executed successfully, no results found")
-                    result = "QUERY_RESULT: No data found - the query executed successfully but returned no rows."
+                # For SELECT queries, return the results
+                if sql_query.strip().upper().startswith('SELECT'):
+                    # Get column names
+                    columns = [description[0] for description in cursor.description]
+                    
+                    # Fetch results
+                    rows = await cursor.fetchall()
+                    
+                    if not rows:
+                        logger.info("📊 [IMPL] Query executed successfully, no results found")
+                        result = "QUERY_RESULT: No data found - the query executed successfully but returned no rows."
+                    else:
+                        # Format as JSON with clear indicator
+                        results = []
+                        for row in rows:
+                            row_dict = dict(zip(columns, row))
+                            results.append(row_dict)
+                        result = f"QUERY_RESULT: {json.dumps(results, indent=2, default=str)}"
+                        logger.info(f"✅ [IMPL] SELECT query returned {len(results)} rows")
                 else:
-                    # Format as JSON with clear indicator
-                    results = []
-                    for row in rows:
-                        row_dict = dict(zip(columns, row))
-                        results.append(row_dict)
-                    result = f"QUERY_RESULT: {json.dumps(results, indent=2, default=str)}"
-                    logger.info(f"✅ [IMPL] SELECT query returned {len(results)} rows")
-            else:
-                # For non-SELECT queries, commit and return affected rows
-                conn.commit()
-                affected_rows = cursor.rowcount
-                result = f"Query executed successfully. Rows affected: {affected_rows}"
-                logger.info(f"✅ [IMPL] Non-SELECT query completed successfully, {affected_rows} rows affected")
-            
-            return result
-            
-        except Exception as e:
-            # Rollback on error
-            conn.rollback()
-            raise e
-            
-        finally:
-            conn.close()
-        
-    except sqlite3.Error as e:
+                    # For non-SELECT queries, commit and return affected rows
+                    await conn.commit()
+                    affected_rows = cursor.rowcount
+                    result = f"Query executed successfully. Rows affected: {affected_rows}"
+                    logger.info(f"✅ [IMPL] Non-SELECT query completed successfully, {affected_rows} rows affected")
+                
+                return result
+                
+            except Exception as e:
+                # Rollback on error
+                await conn.rollback()
+                raise e
+                
+    except aiosqlite.Error as e:
         logger.error(f"💥 [IMPL] Database error: {e}")
         return f"Database error: {str(e)}"
     except Exception as e:
@@ -115,31 +121,30 @@ async def get_conversation_history_impl(session_id: str = None, limit: int = 10)
     logger.info(f"📚 [IMPL] Getting conversation history: session_id={session_id}, limit={limit}")
     
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        if session_id:
-            # Get history for specific session
-            sql_query = """
-                SELECT role, content, timestamp 
-                FROM history 
-                WHERE session_id = ? 
-                ORDER BY timestamp DESC 
-                LIMIT ?
-            """
-            cursor.execute(sql_query, (session_id, limit))
-        else:
-            # Get recent history across all sessions
-            sql_query = """
-                SELECT role, content, timestamp 
-                FROM history 
-                ORDER BY timestamp DESC 
-                LIMIT ?
-            """
-            cursor.execute(sql_query, (limit,))
-        
-        rows = cursor.fetchall()
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            cursor = await conn.cursor()
+            
+            if session_id:
+                # Get history for specific session
+                sql_query = """
+                    SELECT role, content, timestamp 
+                    FROM history 
+                    WHERE session_id = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                """
+                await cursor.execute(sql_query, (session_id, limit))
+            else:
+                # Get recent history across all sessions
+                sql_query = """
+                    SELECT role, content, timestamp 
+                    FROM history 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                """
+                await cursor.execute(sql_query, (limit,))
+            
+            rows = await cursor.fetchall()
         
         if not rows:
             logger.info("📭 [IMPL] No conversation history found")
@@ -167,81 +172,81 @@ async def get_database_info_impl() -> str:
     logger.info("🗄️ [IMPL] Getting database information")
     
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # First, get list of tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-        
-        if not tables:
-            return json.dumps({
+        async with aiosqlite.connect(DB_PATH) as conn:
+            cursor = await conn.cursor()
+            
+            # First, get list of tables
+            await cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = await cursor.fetchall()
+            
+            if not tables:
+                return json.dumps({
+                    "database_path": DB_PATH,
+                    "status": "Database exists but contains no tables",
+                    "tables": []
+                }, indent=2)
+            
+            # Get schema and stats for each table
+            database_info = {
                 "database_path": DB_PATH,
-                "status": "Database exists but contains no tables",
-                "tables": []
-            }, indent=2)
-        
-        # Get schema and stats for each table
-        database_info = {
-            "database_path": DB_PATH,
-            "tables": {}
-        }
-        
-        for (table_name,) in tables:
-            # Get table schema
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            columns = cursor.fetchall()
-            
-            schema = {}
-            for col in columns:
-                col_id, name, data_type, not_null, default_value, primary_key = col
-                schema[name] = {
-                    "type": data_type,
-                    "not_null": bool(not_null),
-                    "default": default_value,
-                    "primary_key": bool(primary_key)
-                }
-            
-            # Get row count
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-            row_count = cursor.fetchone()[0]
-            
-            database_info["tables"][table_name] = {
-                "schema": schema,
-                "row_count": row_count
+                "tables": {}
             }
             
-            # If it's the history table, get additional stats
-            if table_name == 'history':
-                cursor.execute("""
-                    SELECT role, COUNT(*) 
-                    FROM history 
-                    GROUP BY role
-                """)
-                role_counts = dict(cursor.fetchall())
+            for (table_name,) in tables:
+                # Get table schema
+                await cursor.execute(f"PRAGMA table_info({table_name})")
+                columns = await cursor.fetchall()
                 
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT session_id) 
-                    FROM history
-                """)
-                session_count = cursor.fetchone()[0]
+                schema = {}
+                for col in columns:
+                    col_id, name, data_type, not_null, default_value, primary_key = col
+                    schema[name] = {
+                        "type": data_type,
+                        "not_null": bool(not_null),
+                        "default": default_value,
+                        "primary_key": bool(primary_key)
+                    }
                 
-                cursor.execute("""
-                    SELECT DATE(timestamp) as date, COUNT(*) as count
-                    FROM history 
-                    WHERE timestamp >= datetime('now', '-7 days')
-                    GROUP BY DATE(timestamp)
-                    ORDER BY date DESC
-                """)
-                recent_activity = dict(cursor.fetchall())
+                # Get row count
+                await cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                row_rowcount = await cursor.fetchone()
+                row_count = row_rowcount[0] if row_rowcount else 0
                 
-                database_info["tables"][table_name]["statistics"] = {
-                    "messages_by_role": role_counts,
-                    "unique_sessions": session_count,
-                    "recent_activity_7_days": recent_activity
+                database_info["tables"][table_name] = {
+                    "schema": schema,
+                    "row_count": row_count
                 }
-        
-        conn.close()
+                
+                # If it's the history table, get additional stats
+                if table_name == 'history':
+                    await cursor.execute("""
+                        SELECT role, COUNT(*) 
+                        FROM history 
+                        GROUP BY role
+                    """)
+                    role_counts = dict(await cursor.fetchall())
+                    
+                    await cursor.execute("""
+                        SELECT COUNT(DISTINCT session_id) 
+                        FROM history
+                    """)
+                    session_row = await cursor.fetchone()
+                    session_count = session_row[0] if session_row else 0
+                    
+                    await cursor.execute("""
+                        SELECT DATE(timestamp) as date, COUNT(*) as count
+                        FROM history 
+                        WHERE timestamp >= datetime('now', '-7 days')
+                        GROUP BY DATE(timestamp)
+                        ORDER BY date DESC
+                    """)
+                    recent_activity = dict(await cursor.fetchall())
+                    
+                    database_info["tables"][table_name]["statistics"] = {
+                        "messages_by_role": role_counts,
+                        "unique_sessions": session_count,
+                        "recent_activity_7_days": recent_activity
+                    }
         
         logger.info(f"✅ [IMPL] Database info retrieved successfully")
         return json.dumps(database_info, indent=2)
@@ -256,23 +261,22 @@ async def search_conversations_impl(query: str, limit: int = 5) -> str:
     logger.info(f"🔍 [IMPL] Searching conversations for: '{query}' (limit: {limit})")
     
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Simple text search in content
-        sql_query = """
-            SELECT session_id, role, content, timestamp 
-            FROM history 
-            WHERE content LIKE ? 
-            ORDER BY timestamp DESC 
-            LIMIT ?
-        """
-        
-        search_term = f"%{query}%"
-        cursor.execute(sql_query, (search_term, limit))
-        
-        rows = cursor.fetchall()
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            cursor = await conn.cursor()
+            
+            # Simple text search in content
+            sql_query = """
+                SELECT session_id, role, content, timestamp 
+                FROM history 
+                WHERE content LIKE ? 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """
+            
+            search_term = f"%{query}%"
+            await cursor.execute(sql_query, (search_term, limit))
+            
+            rows = await cursor.fetchall()
         
         if not rows:
             logger.info(f"🔍 [IMPL] No conversations found matching: '{query}'")
@@ -380,10 +384,9 @@ async def get_last_N_user_interactions_impl(n: int = 5, session_id: str = None) 
         params.append(n)
         
         # Execute query using direct sqlite connection
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        rows = cursor.execute(query, params).fetchall()
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            async with conn.execute(query, params) as cur:
+                rows = await cur.fetchall()
         
         if not rows:
             return f"No user interactions found for session: {session_id or 'any session'}"
@@ -431,10 +434,9 @@ async def get_last_N_tool_interactions_impl(n: int = 5, session_id: str = None) 
         params.append(n)
         
         # Execute query using direct sqlite connection
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        rows = cursor.execute(query, params).fetchall()
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            async with conn.execute(query, params) as cur:
+                rows = await cur.fetchall()
         
         if not rows:
             return f"No tool interactions found for session: {session_id or 'any session'}"
@@ -484,10 +486,9 @@ async def get_last_N_agent_interactions_impl(n: int = 5, session_id: str = None)
         params.append(n)
         
         # Execute query using direct sqlite connection
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        rows = cursor.execute(query, params).fetchall()
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            async with conn.execute(query, params) as cur:
+                rows = await cur.fetchall()
         
         if not rows:
             return f"No agent interactions found for session: {session_id or 'any session'}"
@@ -522,14 +523,13 @@ async def get_last_N_agent_interactions_impl(n: int = 5, session_id: str = None)
 async def list_tables() -> str:
     """Get a list of all tables in the database."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            cursor = await conn.cursor()
+            
+            await cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = await cursor.fetchall()
         
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        
-        return ", ".join(tables) if tables else "No tables found"
+        return ", ".join([row[0] for row in tables]) if tables else "No tables found"
     except Exception as e:
         logger.error(f"Error listing tables: {e}")
         return "Error listing tables" 
