@@ -127,3 +127,7 @@ venv.bak/
 
 # System
 Thumbs.db
+
+
+_logs/
+logs/

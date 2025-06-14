@@ -16,6 +16,7 @@ from loguru import logger
 
 from .session_manager import get_session_manager
 from .plugin import discover
+from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 
 
 def create_mcp_server() -> Server:
@@ -50,26 +51,37 @@ def create_mcp_server() -> Server:
         
         try:
             if name not in registry:
-                error_msg = f"❌ ERROR: Tool '{name}' not found."
+                error_msg = f"Tool '{name}' not found."
                 logger.error(error_msg)
-                return [types.TextContent(type="text", text=error_msg)]
+                envelope = ErrorEnvelope(error=error_msg, tool=name, request=ToolCall(name=name, arguments=arguments))
+                get_session_manager().save_error(name, arguments, error_msg)
+                return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
             impl_fn = registry[name]["fn"]
             # ensure kwargs compatible
             result_text = await impl_fn(**arguments)
 
+            # Wrap successful result in a ToolResult and HMAC-signed envelope
+            payload_str = ToolResult(
+                tool=name,
+                arguments=arguments,
+                result=result_text,
+            ).model_dump_json()
             rid = str(uuid4())
             envelope = {
                 "result_id": rid,
-                "payload": result_text,
-                "sig": _sign(rid, result_text),
+                "payload": payload_str,
+                "sig": _sign(rid, payload_str),
             }
 
             return [types.TextContent(type="text", text=json.dumps(envelope))]
 
         except Exception as e:
             logger.error(f"💥 [MCP SERVER] Error handling tool {name}: {e}")
-            return [types.TextContent(type="text", text=f"Error executing tool {name}: {str(e)}")]
+            err_text = str(e)
+            envelope = ErrorEnvelope(error=err_text, tool=name, request=ToolCall(name=name, arguments=arguments))
+            get_session_manager().save_error(name, arguments, err_text)
+            return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
     @server.list_resources()
     async def handle_list_resources() -> list[types.Resource]:

@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from loguru import logger
+from ape.settings import settings
 
 # Configuration
-DB_PATH = "ape/sessions.db"
+DB_PATH = settings.SESSION_DB_PATH
 
 
 class SessionManager:
@@ -37,6 +38,19 @@ class SessionManager:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # New: table for structured tool error logging
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tool_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                arguments TEXT,
+                error TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
         
         conn.commit()
         conn.close()
@@ -154,6 +168,29 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error getting sessions: {e}")
             return []
+
+    # ------------------------------------------------------------------
+    # Error persistence helpers
+    # ------------------------------------------------------------------
+
+    def save_error(self, tool: str, arguments: dict | None, error: str):
+        """Persist a tool error into *tool_errors* table."""
+
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO tool_errors (tool, arguments, error) VALUES (?, ?, ?)",
+                (
+                    tool,
+                    json.dumps(arguments or {}),
+                    error,
+                ),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as exc:
+            logger.error(f"Error saving tool error: {exc}")
 
 
 # Global session manager instance

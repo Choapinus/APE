@@ -29,3 +29,6 @@ mypy>=1.0.0
 
 # Added for async SQLite support
 aiosqlite>=0.19.0
+
+# Added for CLI arrow-key navigation
+prompt_toolkit>=3.0

@@ -40,4 +40,40 @@ class SearchConversationsRequest(BaseModel):
 
 
 class GenericTextResponse(BaseModel):
-    result: str 
+    result: str
+
+
+# ---------------------------------------------------------------------------
+# 🆕  Formalised internal envelope models
+# ---------------------------------------------------------------------------
+
+class ToolCall(BaseModel):
+    """Represents a request issued by the agent / LLM to call a tool."""
+
+    name: str = Field(..., description="Registered tool name (unique id)")
+    arguments: dict = Field(default_factory=dict, description="JSON-serialisable arguments object")
+
+
+class ToolResult(BaseModel):
+    """Normalised result record returned by a tool.
+
+    These objects can be persisted (e.g. to the *history* table) or sent across
+    the wire as JSON.  They intentionally mirror the fields used throughout
+    :pyclass:`ape.cli.context_manager.ContextManager` so the agent can parse
+    them consistently.
+    """
+
+    tool: str = Field(..., description="Tool name that produced the result")
+    arguments: dict = Field(default_factory=dict, description="Arguments that were passed to the tool")
+    result: str = Field(..., description="Raw result payload – often JSON or plain text")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ErrorEnvelope(BaseModel):
+    """Structured error payload that can wrap failed tool executions."""
+
+    error: str = Field(..., description="Short error message / summary")
+    details: Optional[str] = Field(None, description="Extended error information / traceback")
+    tool: Optional[str] = Field(None, description="Tool involved, if any")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    request: Optional[ToolCall] = Field(None, description="Original tool-call that triggered the error (if available)") 

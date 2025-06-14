@@ -23,6 +23,11 @@ from ape.cli.mcp_client import MCPClient
 from ape.cli.chat_agent import ChatAgent
 from ape.settings import settings
 
+# Better CLI input handling (arrow keys, history)
+try:
+    from prompt_toolkit import PromptSession
+except ImportError:  # fallback if library not installed
+    PromptSession = None
 
 class APEChatCLI:
     """Command-line interface for APE chat functionality using MCP."""
@@ -37,6 +42,11 @@ class APEChatCLI:
         self.context_manager = ContextManager(self.session_id)
         self.chat_agent = ChatAgent(self.session_id, self.mcp_client, self.context_manager)
         logger.info(f"Started new chat session: {self.session_id}")
+        
+        # Initialise prompt session for nicer input UX if available
+        self.prompt: Optional[PromptSession] = None
+        if PromptSession is not None:
+            self.prompt = PromptSession()
     
     def print_banner(self):
         """Print the APE CLI banner."""
@@ -602,7 +612,11 @@ The agent will use its natural reasoning to break down complex tasks!
         try:
             while True:
                 try:
-                    user_input = input("\nYou: ").strip()
+                    if self.prompt is not None:
+                        # prompt_toolkit's async variant avoids nested event-loop issues
+                        user_input = (await self.prompt.prompt_async("\nYou: ")).strip()
+                    else:
+                        user_input = input("\nYou: ").strip()
                     
                     if not user_input:
                         continue

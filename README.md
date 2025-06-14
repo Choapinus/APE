@@ -107,7 +107,7 @@ Once in the chat interface:
 ```
 ape/
 ├── ape/                          # Core package
-│   ├── config.py                 # Configuration settings
+│   ├── settings.py               # Configuration settings
 │   ├── session.py                # Session management
 │   ├── utils.py                  # Utility functions
 │   ├── sessions.db               # SQLite database
@@ -175,12 +175,12 @@ APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompt
 
 ## ⚙️ Configuration
 
-### Configuration File (`ape/config.py`)
+### Configuration File (`ape/settings.py`)
 
 APE uses a Python configuration file with sensible defaults. No environment variables need to be exported unless you want to override the defaults:
 
 ```python
-# Current default settings in ape/config.py
+# Current default settings in ape/settings.py
 LLM_MODEL = "qwen3:14b"                    # Active LLM model
 OLLAMA_BASE_URL = "http://localhost:11434" # Ollama server URL
 LOG_LEVEL = "DEBUG"                        # Logging verbosity

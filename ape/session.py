@@ -1,10 +1,14 @@
 import sqlite3
 import json
 from loguru import logger
+from ape.settings import settings
 
 class SessionManager:
-    def __init__(self, db_path="ape/sessions.db"):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path
+        if self.db_path is None:
+            self.db_path = settings.SESSION_DB_PATH
+
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._create_table()
 

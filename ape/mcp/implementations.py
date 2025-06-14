@@ -16,9 +16,10 @@ from typing import Optional
 from loguru import logger
 
 from .session_manager import get_session_manager
+from ape.settings import settings
 
 # Configuration
-DB_PATH = "ape/sessions.db"
+DB_PATH = settings.SESSION_DB_PATH
 
 
 async def check_table_exists(table_name: str) -> bool:

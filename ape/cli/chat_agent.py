@@ -163,7 +163,8 @@ class ChatAgent:
             "4. Build upon results from previous tools to complete comprehensive analysis\n"
             "5. Be thorough and complete - don't stop after one tool if more work is needed\n"
             "6. Synthesize information from multiple sources to provide complete answers\n"
-            "7. Take initiative to gather all necessary information to fully address user requests"
+            "7. Take initiative to gather all necessary information to fully address user requests\n"
+            "8. NEVER assume or fabricate information – if data is required, first identify and execute the appropriate tool(s), then base your answer strictly on the returned results"
         )
 
     # ------------------------------------------------------------------
@@ -230,16 +231,26 @@ class ChatAgent:
                 if not verified:
                     text = "❌ ERROR: Tool result signature verification failed."
                 else:
-                    # if payload itself is JSON, keep as is; we can still feed string to LLM
-                    text = payload_text
+                    # Try to pretty-print ToolResult/ErrorEnvelope payloads for the LLM
+                    try:
+                        parsed = json.loads(payload_text)
+                        if isinstance(parsed, dict):
+                            # Remove overly verbose fields if any
+                            text = json.dumps(parsed, indent=2)
+                        else:
+                            text = payload_text
+                    except json.JSONDecodeError:
+                        text = payload_text
             except Exception as exc:
                 text = f"ERROR executing tool: {exc}"
 
             results.append({"tool": fn, "arguments": arguments, "result": text})
             self.context_manager.add_tool_result(fn, arguments, text)
 
-        # Format output similar to previous implementation
-        formatted = "🔧 Tool Execution Results:\n\n"
+        # Format output with explicit attribution to avoid LLM confusing the origin
+        formatted = (
+            "🔧 SYSTEM NOTE: The following content comes from *tool execution* — it was NOT typed by the user.\n\n"
+        )
         for idx, r in enumerate(results, 1):
             formatted += f"**Tool {idx}: {r['tool']}**\nArguments: {r['arguments']}\nResult: {r['result']}\n\n"
         return formatted
