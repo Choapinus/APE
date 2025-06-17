@@ -229,55 +229,42 @@ class APEChatCLI:
             return capabilities
 
     async def create_dynamic_system_prompt(self, capabilities: dict) -> str:
-        """Create a dynamic system prompt based on discovered capabilities."""
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Build capability sections with better formatting
-        tools_section = "\n".join([
-            f"• **{tool['name']}**: {tool['description']}"
-            for tool in capabilities["tools"]
-        ]) if capabilities["tools"] else "No tools available"
-        
-        prompts_section = "\n".join([
-            f"• **{prompt['name']}**: {prompt['description']}"
-            for prompt in capabilities["prompts"]
-        ]) if capabilities["prompts"] else "No prompts available"
-        
-        resources_section = "\n".join([
-            f"• **{resource['name']}** ({resource['type']}): {resource['description']}"
-            for resource in capabilities["resources"]
-        ]) if capabilities["resources"] else "No resources available"
-        
-        return f"""You are APE (Agentic Protocol Executor), an intelligent autonomous AI assistant operating within the Model Context Protocol (MCP) framework.
+        """Create system prompt using the shared Prompt Registry."""
 
-🔧 **YOUR CAPABILITIES:**
-You have access to powerful tools that allow you to:
-- Query databases and retrieve conversation data
-- Search through conversation history
-- Execute SQL queries for analysis
-- Retrieve session and user interaction data
+        from ape.prompts import render_prompt  # lazy import to avoid cycles
 
-📊 **CURRENT SESSION:**
-- Session ID: {self.session_id}
-- Current Date/Time: {current_date}
+        def _fmt(items: list[dict], label: str = "") -> str:
+            if not items:
+                return f"No {label}available".strip()
+            if label:
+                label = " " + label
+            return "\n".join([f"• **{i['name']}**{label}: {i['description']}" for i in items])
 
-🛠️ **AVAILABLE TOOLS:**
-{tools_section}
+        tools_section = _fmt(capabilities["tools"])
+        prompts_section = _fmt(capabilities["prompts"])
+        resources_section = (
+            "\n".join(
+                [
+                    f"• **{res['name']}** ({res['type']}): {res['description']}"
+                    for res in capabilities["resources"]
+                ]
+            )
+            if capabilities["resources"]
+            else "No resources available"
+        )
 
-📝 **AVAILABLE PROMPTS:**
-{prompts_section}
+        base_prompt = render_prompt(
+            "system",
+            {
+                "agent_name": "APE",
+                "current_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "tools_section": tools_section,
+                "prompts_section": prompts_section,
+                "resources_section": resources_section,
+            },
+        )
 
-📚 **AVAILABLE RESOURCES:**
-{resources_section}
-
-🎯 **AUTONOMOUS OPERATION PRINCIPLES:**
-1. You are capable of handling complex, multi-step tasks autonomously
-2. Use your <think> tags to reason through problems step by step
-3. Chain multiple tool calls together when needed to accomplish complex goals
-4. Build upon results from previous tools to complete comprehensive analysis
-5. Be thorough and complete - don't stop after one tool if more work is needed
-6. Synthesize information from multiple sources to provide complete answers
-7. Take initiative to gather all necessary information to fully address user requests"""
+        return base_prompt
 
     async def chat_with_llm(self, message: str, conversation: list) -> str:
         """Send a message to the LLM with enhanced autonomous capabilities."""
@@ -292,28 +279,6 @@ You have access to powerful tools that allow you to:
             context_summary = self.context_manager.get_context_summary()
             if context_summary.strip() != "CURRENT SESSION CONTEXT:":
                 system_prompt += f"\n\nCURRENT CONTEXT:\n{context_summary}"
-            
-            # Enhanced autonomous guidelines with anti-hallucination measures
-            system_prompt += """
-
-AUTONOMOUS OPERATION GUIDELINES:
-1. You are a capable autonomous agent with access to powerful tools
-2. Think through complex tasks step by step using <think> tags
-3. Use multiple tools in sequence when needed to complete complex requests
-4. Build upon results from previous tool calls to accomplish multi-step tasks
-5. Be thorough - if a task requires multiple steps, execute them all
-6. Synthesize results from multiple tool calls to provide comprehensive answers
-7. Don't stop after one tool call if the task requires more work
-8. Use your thinking process to plan and execute complex workflows
-
-🚨 CRITICAL ANTI-HALLUCINATION RULES:
-1. **NEVER INVENT DATA**: If a tool returns an error, empty result, or unclear response, ACKNOWLEDGE IT
-2. **ONLY USE ACTUAL TOOL RESULTS**: Base all responses STRICTLY on what tools actually return
-3. **CHECK FOR ERRORS**: If tool results contain "ERROR", "failed", or "no results", DO NOT proceed with fake data
-4. **BE EXPLICIT ABOUT FAILURES**: If tools fail, tell the user exactly what went wrong
-5. **ASK FOR CLARIFICATION**: If tool responses are unclear, ask the user to help debug the issue
-6. **VALIDATE DATA**: Before presenting numbers or facts, ensure they come from actual tool responses
-7. **NO ASSUMPTIONS**: Do not assume what data "should" look like - only use what you actually receive"""
             
             # Increased iteration limits for autonomous operation
             max_iterations = settings.MAX_TOOLS_ITERATIONS

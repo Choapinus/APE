@@ -18,6 +18,7 @@ from ape.utils import setup_logger
 from .session_manager import get_session_manager
 from .plugin import discover
 from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
+from ape.prompts import list_prompts as _list_prompts, render_prompt
 
 
 def create_mcp_server() -> Server:
@@ -83,6 +84,64 @@ def create_mcp_server() -> Server:
             envelope = ErrorEnvelope(error=err_text, tool=name, request=ToolCall(name=name, arguments=arguments))
             get_session_manager().save_error(name, arguments, err_text)
             return [types.TextContent(type="text", text=envelope.model_dump_json())]
+
+    @server.list_prompts()
+    async def handle_list_prompts() -> list[Any]:
+        """Expose all prompts loaded from ``ape/prompts`` to the agent."""
+
+        # Retrieve model classes from the SDK if they exist – fall back to a
+        # simple ``dict`` representation otherwise so the JSON payload still
+        # contains the expected fields on the wire.
+
+        PromptModel = getattr(types, "Prompt", dict)  # type: ignore[var-annotated]
+        ArgModel = (
+            getattr(types, "PromptArgument", None)
+            or getattr(types, "Argument", None)
+            or dict
+        )  # type: ignore[var-annotated]
+
+        prompt_objs: list[Any] = []
+        for p in _list_prompts():
+            try:
+                if PromptModel is dict:
+                    prompt_objs.append(p.dict())
+                else:
+                    prompt_objs.append(
+                        PromptModel(
+                            name=p.name,
+                            description=p.description,
+                            arguments=[
+                                (
+                                    ArgModel(
+                                        name=a.name,
+                                        description=a.description,
+                                        required=a.required,
+                                    )
+                                    if ArgModel is not dict
+                                    else {
+                                        "name": a.name,
+                                        "description": a.description,
+                                        "required": a.required,
+                                    }
+                                )
+                                for a in p.arguments
+                            ],
+                        )
+                    )
+            except Exception as exc:
+                logger.warning(f"⚠️  Could not convert prompt '{p.name}': {exc}")
+
+        return prompt_objs  # type: ignore[return-value]
+
+    @server.get_prompt()
+    async def handle_get_prompt(name: str, arguments: dict | None = None) -> str:
+        """Render a prompt by *name* using the internal registry."""
+
+        try:
+            rendered = render_prompt(name, arguments or {})
+            return rendered
+        except KeyError:
+            raise ValueError(f"Prompt '{name}' not found.")
 
     @server.list_resources()
     async def handle_list_resources() -> list[types.Resource]:

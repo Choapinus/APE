@@ -334,6 +334,9 @@ graph TD
 * **CLI**: split into thin shell, `MCPClient`, `ChatAgent`, `ContextManager`.
 * **Tools**: data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`).
 * **Integrity**: MCP server wraps every tool result in an HMAC-signed envelope; `ChatAgent` verifies.
+* **Token budgeting**: agent counts tokens live and warns on context overflow; *hybrid summarisation policy* (overflow-only) scheduled.
+* **Prompt registry**: Implemented – prompts live in `.prompt.md` templates, loaded via Jinja2, hot-reloaded, and exposed through MCP.
+* **Memory roadmap**: `AgentMemory` abstraction + `WindowMemory` implementation in progress; vector memory slated for next milestone.
 * **Persistence**: migrated to asynchronous `aiosqlite` for non-blocking DB operations.
 
 > For detailed roadmap and open tasks see `docs/ROADMAP.md` (TBD).

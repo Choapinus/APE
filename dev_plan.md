@@ -20,15 +20,15 @@
 | P0 | **Done** | dev-backend | Delivered in latest refactor |
 | P0 | **Done** – Introduce `TokenCounter` (local tokenizer) | dev-agent | implemented in `ape.utils.count_tokens` (uses HF `transformers`, LRU-cached) |
 | P1 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
+| P1 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
 | P1 | 🔄 **In&nbsp;Progress** – Sliding context-window logic based on live token count | dev-agent | Monitoring in place (token budget + warnings); automatic trimming/summarisation still TBD |
 | P1 | **NEW** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` **only** on overflow) | dev-agent | Aligns with design decision 2025-06-17 |
 | P1 | Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | foundation for automated context trimming |
 | P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
 | P1 | Central error bus + DB persistence | dev-backend | new table `tool_errors` |
-| P2 | Prompt / Resource registry + MCP handlers | dev-backend | parity with `tools` feature |
-| P2 | Extend plugin discovery to Prompts/Resources | dev-platform | unify entry-point group |
-| P2 | Implement `.prompt` file loader for easy authoring | dev-platform | optional `.prompt.py` functions |
-| P3 | HMAC-JWT envelope w/ expiry & issuer | dev-security | `.env` for secret/key rotation |
+| P2 | Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | parity with `tools` feature |
+| P2 | Extend plugin discovery to Prompts **and** Resources | dev-platform | unify entry-point group |
+| P2 | HMAC-JWT envelope w/ expiry & issuer | dev-security | `.env` for secret/key rotation |
 | P3 | Embeddings & FAISS memory index | dev-ml | start with MiniLM-L6 or `bge-small` |
 | P3 | Expose `memory://search?q=` Resource | dev-ml | read-only, returns top-k snippets |
 | P3 | Memory append tool `memory_append` | dev-ml | agent can write memories to RAG store |
@@ -49,18 +49,20 @@
 ## 3. Milestones
 1. **Completed**
    - All chat/database ops are now awaitable; DB layer uses `aiosqlite`.
-2. **M1 – Safe & Typed IPC (P0 + P1)** *(in progress)*
+2. **M1 – Safe IPC & Prompt Hygiene (P0 + P1)** *(in progress)*
    - ✅ Pydantic schemas integrated.  
-   - ⏳ Next: error bus persistence, token counter, context hygiene.
-3. **M2 – Discovery Parity (P2)**
-   - Prompts, Resources discoverable; plugin framework unified.
+   - ✅ Prompt Registry implemented & served via MCP.  
+   - ⏳ Next: error bus persistence, token budgeting, hybrid summarisation.
+3. **M2 – Discovery Parity (extended P2)**
+   - Resources registry + MCP handlers.  
+   - Unified plugin discovery (Tools/Prompts/Resources).
 4. **M3 – Memory-Augmented Agent (P3)**
    - Embedding store, RAG resource, improved recall.
-5. **M4 – Security Hardened (P3)**
+5. **M4 – Security Hardened**
    - JWT-style envelopes, secret rotation, CI gate for secrets.
-5. **M5 – Community & UI**
+6. **M5 – Community & UI**
    - Prompt authoring UI, plugin marketplace, rich docs.
-6. **M6 – Research / Federation**
+7. **M6 – Research / Federation**
    - Distributed agents, online learning hooks.
 
 ## 4. Technical Notes

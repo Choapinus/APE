@@ -126,57 +126,43 @@ class ChatAgent:
 
     # ------------------------------------------------------------------
     async def create_dynamic_system_prompt(self, capabilities: Dict[str, Any]) -> str:
-        """Craft a system prompt that embeds the discovered capabilities."""
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """Render the *system* prompt via the Prompt Registry.*"""
 
-        def _fmt(items: List[Dict[str, Any]], extra: str = "") -> str:
+        from ape.prompts import render_prompt  # local import avoids circular deps
+
+        # Format helper to create markdown bullet-lists or a fallback string
+        def _fmt(items: List[Dict[str, Any]], *, label: str = "") -> str:
             if not items:
-                return "No " + extra + "available".strip()
-            if extra:
-                extra = " " + extra
+                return f"No {label}available".strip()
+            if label:
+                label = " " + label
             return "\n".join(
-                [f"• **{itm['name']}**{extra}: {itm['description']}" for itm in items]
+                [f"• **{itm['name']}**{label}: {itm['description']}" for itm in items]
             )
 
         tools_section = _fmt(capabilities["tools"])
         prompts_section = _fmt(capabilities["prompts"])
-        resources_section = (
-            "\n".join(
+
+        if capabilities["resources"]:
+            resources_section = "\n".join(
                 [
                     f"• **{res['name']}** ({res['type']}): {res['description']}"
                     for res in capabilities["resources"]
                 ]
             )
-            if capabilities["resources"]
-            else "No resources available"
-        )
+        else:
+            resources_section = "No resources available"
 
-        return (
-            f"You are {self.agent_name} (Agentic Protocol Executor), an intelligent autonomous AI assistant operating within the Model Context Protocol (MCP) framework.\n\n"
-            "🔧 **YOUR CAPABILITIES:**\n"
-            "You have access to powerful tools that allow you to:\n"
-            "- Query databases and retrieve conversation data\n"
-            "- Search through conversation history\n"
-            "- Execute SQL queries for analysis\n"
-            "- Retrieve session and user interaction data\n\n"
-            "📊 **CURRENT SESSION:**\n"
-            f"- Session ID: {self.session_id}\n"
-            f"- Current Date/Time: {current_date}\n\n"
-            "🛠️ **AVAILABLE TOOLS:**\n"
-            f"{tools_section}\n\n"
-            "📝 **AVAILABLE PROMPTS:**\n"
-            f"{prompts_section}\n\n"
-            "📚 **AVAILABLE RESOURCES:**\n"
-            f"{resources_section}\n\n"
-            "🎯 **AUTONOMOUS OPERATION PRINCIPLES:**\n"
-            "1. You are capable of handling complex, multi-step tasks autonomously\n"
-            "2. Use your <think> tags to reason through problems step by step\n"
-            "3. Chain multiple tool calls together when needed to accomplish complex goals\n"
-            "4. Build upon results from previous tools to complete comprehensive analysis\n"
-            "5. Be thorough and complete - don't stop after one tool if more work is needed\n"
-            "6. Synthesize information from multiple sources to provide complete answers\n"
-            "7. Take initiative to gather all necessary information to fully address user requests\n"
-            "8. NEVER assume or fabricate information – if data is required, first identify and execute the appropriate tool(s), then base your answer strictly on the returned results"
+        # Render Jinja2 template
+        return render_prompt(
+            "system",
+            {
+                "agent_name": self.agent_name,
+                "current_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "tools_section": tools_section,
+                "prompts_section": prompts_section,
+                "resources_section": resources_section,
+            },
         )
 
     # ------------------------------------------------------------------
@@ -227,7 +213,9 @@ class ChatAgent:
                 res = await self.mcp_client.call_tool(fn, arguments)
                 raw = res.content[0].text if res.content else ""
 
-                # Verify HMAC envelope
+                # ------------------------------------------------------
+                # Verify HMAC envelope & parse inner payload
+                # ------------------------------------------------------
                 verified = False
                 payload_text = ""
                 try:
@@ -240,18 +228,36 @@ class ChatAgent:
                 except Exception:
                     pass
 
+                from ape.prompts import render_prompt  # local import to avoid cycles
+
                 if not verified:
                     text = "❌ ERROR: Tool result signature verification failed."
                 else:
-                    # Try to pretty-print ToolResult/ErrorEnvelope payloads for the LLM
+                    # Try to detect ErrorEnvelope vs ToolResult for nicer formatting
                     try:
                         parsed = json.loads(payload_text)
-                        if isinstance(parsed, dict):
-                            # Remove overly verbose fields if any
-                            text = json.dumps(parsed, indent=2)
+                        if isinstance(parsed, dict) and parsed.get("error"):
+                            # ErrorEnvelope
+                            text = render_prompt(
+                                "error_report",
+                                {
+                                    "tool": parsed.get("tool"),
+                                    "error": parsed.get("error"),
+                                    "details": parsed.get("details"),
+                                },
+                            )
+                        elif isinstance(parsed, dict) and parsed.get("result") is not None:
+                            text = render_prompt(
+                                "tool_explanation",
+                                {
+                                    "tool_name": parsed.get("tool"),
+                                    "arguments": json.dumps(parsed.get("arguments", {}), indent=2),
+                                    "result": parsed.get("result"),
+                                },
+                            )
                         else:
                             text = payload_text
-                    except json.JSONDecodeError:
+                    except Exception:
                         text = payload_text
             except Exception as exc:
                 text = f"ERROR executing tool: {exc}"
