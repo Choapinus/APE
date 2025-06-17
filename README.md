@@ -17,6 +17,7 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 - 🎯 **CLI Interface**: Rich command-line experience with real-time tool feedback
 - 🔍 **Conversation Search**: Full-text search across conversation history
 - 📈 **Session Analytics**: Detailed session statistics and interaction tracking
+- 📚 **Resource Registry**: Browse conversations & DB schema via URIs (`conversation://`, `schema://`) exposed over MCP
 
 ## 🚀 Quick Start
 
@@ -336,7 +337,7 @@ graph TD
 * **Integrity**: MCP server wraps every tool result in an HMAC-signed envelope; `ChatAgent` verifies.
 * **Token budgeting**: agent counts tokens live and warns on context overflow; *hybrid summarisation policy* (overflow-only) scheduled.
 * **Prompt registry**: Implemented – prompt templates (`*.prompt.md`) now reside in `ape/prompts/templates/`, loaded via Jinja2, hot-reloaded, and exposed through MCP.
-* **Resource registry**: In progress – exposing data via `conversation://` and `schema://` URIs; discoverable through MCP `list_resources`.
+* **Resource registry**: Implemented – access conversation & DB schema data via `conversation://*` and `schema://*` URIs; discoverable through MCP `list_resources`.
 * **Memory roadmap**: `AgentMemory` abstraction + `WindowMemory` implementation in progress; vector memory slated for next milestone.
 * **Persistence**: migrated to asynchronous `aiosqlite` for non-blocking DB operations.
 

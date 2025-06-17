@@ -199,16 +199,32 @@ class APEChatCLI:
                 for tool in tools_result.tools
             ]
             
-            # Discover available prompts
-            prompts_result = await self.mcp_session.list_prompts()
-            capabilities["prompts"] = [
-                {
-                    "name": prompt.name,
-                    "description": prompt.description,
-                    "arguments": [arg.dict() for arg in prompt.arguments]
-                }
-                for prompt in prompts_result
-            ]
+            # Discover available prompts (new SDKs) – with graceful fallback
+            try:
+                prompts_result = await self.mcp_session.list_prompts()
+                prompt_items = getattr(prompts_result, "prompts", prompts_result)
+                capabilities["prompts"] = [
+                    {
+                        "name": p.name,
+                        "description": p.description,
+                        "arguments": [getattr(arg, "dict", lambda: arg)() for arg in getattr(p, "arguments", [])]
+                    }
+                    for p in prompt_items
+                ]
+            except Exception as exc:
+                logger.debug(f"list_prompts failed ({exc}); using local registry fallback.")
+                try:
+                    from ape.prompts import list_prompts as _local_list
+                    capabilities["prompts"] = [
+                        {
+                            "name": prm.name,
+                            "description": prm.description,
+                            "arguments": [arg.dict() for arg in prm.arguments]
+                        }
+                        for prm in _local_list()
+                    ]
+                except Exception as loc_exc:
+                    logger.debug(f"Local prompt registry fallback failed: {loc_exc}")
             
             # Discover available resources
             resources_result = await self.mcp_session.list_resources()
@@ -234,11 +250,26 @@ class APEChatCLI:
         from ape.prompts import render_prompt  # lazy import to avoid cycles
 
         def _fmt(items: list[dict], label: str = "") -> str:
+            """Render items with optional argument hints."""
             if not items:
                 return f"No {label}available".strip()
+
+            def _args_hint(itm: dict) -> str:
+                if "parameters" in itm and isinstance(itm["parameters"], dict):
+                    props = itm["parameters"].get("properties", {})
+                    if props:
+                        return ", args: " + ", ".join(props.keys())
+                if "arguments" in itm and itm["arguments"]:
+                    return ", args: " + ", ".join(arg.get("name", "?") for arg in itm["arguments"])
+                return ""
+
             if label:
                 label = " " + label
-            return "\n".join([f"• **{i['name']}**{label}: {i['description']}" for i in items])
+
+            lines: list[str] = []
+            for itm in items:
+                lines.append(f"• **{itm['name']}**{label}{_args_hint(itm)}: {itm['description']}")
+            return "\n".join(lines)
 
         tools_section = _fmt(capabilities["tools"])
         prompts_section = _fmt(capabilities["prompts"])

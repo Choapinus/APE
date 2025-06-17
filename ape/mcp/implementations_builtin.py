@@ -16,6 +16,7 @@ from ape.mcp.models import (
     ConversationHistoryRequest, ConversationHistoryResponse,
     SearchConversationsRequest, GenericTextResponse,
 )
+from ape.resources import read_resource as _read_resource
 
 # Input schemas reused from server earlier definition
 
@@ -89,4 +90,36 @@ async def last_tool_interactions(**kwargs):
 
 @tool("get_last_N_agent_interactions", "Last N agent outputs", n_inter_schema)
 async def last_agent_interactions(**kwargs):
-    return await get_last_N_agent_interactions_impl(kwargs.get("n", 5), kwargs.get("session_id")) 
+    return await get_last_N_agent_interactions_impl(kwargs.get("n", 5), kwargs.get("session_id"))
+
+# ---------------------------------------------------------------------------
+# 🆕 Resource wrapper tool
+# ---------------------------------------------------------------------------
+resource_schema = {
+    "type": "object",
+    "properties": {
+        "uri": {
+            "type": "string",
+            "description": "Registry URI to read (e.g. conversation://recent, schema://tables)"
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Optional limit parameter supported by some resources",
+            "default": 20
+        }
+    },
+    "required": ["uri"],
+}
+
+@tool("read_resource", "Read a registry resource (conversation://*, schema://*, …)", resource_schema)
+async def read_resource_tool(uri: str, limit: int | None = None):
+    """Expose Resource Registry via a standard tool call so the LLM can read URIs autonomously."""
+    try:
+        if limit is not None:
+            mime, content = await _read_resource(uri, limit=limit)
+        else:
+            mime, content = await _read_resource(uri)
+        # Keep MIME available for future branching but return raw content for now
+        return content
+    except Exception as exc:
+        return f"ERROR reading resource {uri}: {exc}" 

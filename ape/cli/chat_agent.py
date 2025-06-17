@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import hmac, hashlib
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 
 import ollama
 from loguru import logger
@@ -90,17 +90,32 @@ class ChatAgent:
         # Discover PROMPTS – optional (older servers may not implement)
         try:
             prompts_result = await self.mcp_client.list_prompts()
+            # The SDK may return either a wrapper with `.prompts` or the list itself
+            prompt_items = getattr(prompts_result, "prompts", prompts_result)
             capabilities["prompts"] = [
                 {
-                    "name": prompt.name,
-                    "description": prompt.description,
-                    "arguments": [arg.dict() for arg in prompt.arguments],
+                    "name": p.name,
+                    "description": p.description,
+                    "arguments": [getattr(arg, "dict", lambda: arg)() for arg in getattr(p, "arguments", [])],
                 }
-                for prompt in prompts_result
+                for p in prompt_items
             ]
-        except Exception:
-            # Don't treat as fatal – just continue without prompts
-            logger.debug("MCP server does not support list_prompts – ignoring.")
+        except Exception as exc:
+            # Fall back to local registry to prevent empty prompt list
+            logger.debug(f"MCP server list_prompts failed ({exc}); falling back to local registry.")
+            try:
+                from ape.prompts import list_prompts as _local_list
+
+                capabilities["prompts"] = [
+                    {
+                        "name": prm.name,
+                        "description": prm.description,
+                        "arguments": [arg.dict() for arg in prm.arguments],
+                    }
+                    for prm in _local_list()
+                ]
+            except Exception as local_exc:
+                logger.debug(f"Local prompt registry fallback failed: {local_exc}")
 
         # Discover RESOURCES – optional as well
         try:
@@ -132,13 +147,28 @@ class ChatAgent:
 
         # Format helper to create markdown bullet-lists or a fallback string
         def _fmt(items: List[Dict[str, Any]], *, label: str = "") -> str:
+            """Pretty-print items with optional arg summaries (for tools/prompts)."""
             if not items:
                 return f"No {label}available".strip()
+
+            def _args_hint(itm: Dict[str, Any]) -> str:
+                # Tools provide a JSON schema under "parameters" whereas prompts list "arguments"
+                if "parameters" in itm and isinstance(itm["parameters"], dict):
+                    props = itm["parameters"].get("properties", {})
+                    if props:
+                        return ", args: " + ", ".join(props.keys())
+                if "arguments" in itm and itm["arguments"]:
+                    return ", args: " + ", ".join(arg.get("name", "?") for arg in itm["arguments"])
+                return ""
+
             if label:
                 label = " " + label
-            return "\n".join(
-                [f"• **{itm['name']}**{label}: {itm['description']}" for itm in items]
-            )
+
+            lines: List[str] = []
+            for itm in items:
+                args_txt = _args_hint(itm)
+                lines.append(f"• **{itm['name']}**{label}{args_txt}: {itm['description']}")
+            return "\n".join(lines)
 
         tools_section = _fmt(capabilities["tools"])
         prompts_section = _fmt(capabilities["prompts"])

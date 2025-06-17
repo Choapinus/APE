@@ -19,6 +19,7 @@ from .session_manager import get_session_manager
 from .plugin import discover
 from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 from ape.prompts import list_prompts as _list_prompts, render_prompt
+from ape.resources import list_resources as _list_resources, read_resource as _read_resource
 
 
 def create_mcp_server() -> Server:
@@ -157,52 +158,31 @@ def create_mcp_server() -> Server:
 
     @server.list_resources()
     async def handle_list_resources() -> list[types.Resource]:
-        """List available resources."""
-        return [
-            types.Resource(
-                uri="conversation://sessions",
-                name="All conversation sessions",
-                description="Information about all conversation sessions"
-            ),
-            types.Resource(
-                uri="conversation://recent",
-                name="Recent messages",
-                description="Recent messages across all sessions"
+        """List resources from the registry."""
+
+        res_objs = []
+        for meta in _list_resources():
+            res_objs.append(
+                types.Resource(
+                    uri=meta.uri,
+                    name=meta.name,
+                    description=meta.description,
+                    type=meta.type,
+                )
             )
-        ]
+        return res_objs
 
     @server.read_resource()
     async def handle_read_resource(uri: str) -> str:
-        """Handle resource reading."""
+        """Delegate to resource registry adapters."""
         logger.info(f"📖 [MCP SERVER] Resource requested: {uri}")
-        
         try:
-            if uri == "conversation://sessions":
-                logger.info("👥 [MCP SERVER] Fetching all conversation sessions")
-                session_manager = get_session_manager()
-                sessions = session_manager.get_all_sessions()
-                
-                if not sessions:
-                    result = "No conversation sessions found."
-                else:
-                    result = json.dumps(sessions, indent=2)
-                
-                logger.info(f"✅ [MCP SERVER] Sessions resource retrieved, {len(sessions)} sessions found")
-                return result
-                
-            elif uri == "conversation://recent":
-                logger.info("🕒 [MCP SERVER] Fetching recent messages across all sessions")
-                result = await get_conversation_history_impl(None, 20)
-                logger.info(f"✅ [MCP SERVER] Recent messages resource retrieved")
-                return result
-                
-            else:
-                logger.error(f"❌ [MCP SERVER] Unknown resource requested: {uri}")
-                raise ValueError(f"Unknown resource: {uri}")
-                
+            mime, content = await _read_resource(uri)
+            # For now return plain string; mime handling TBD
+            return content
         except Exception as e:
             logger.error(f"💥 [MCP SERVER] Error reading resource {uri}: {e}")
-            return f"Error reading resource: {str(e)}"
+            raise
 
     return server
 

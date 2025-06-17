@@ -1,5 +1,5 @@
 # 🛠️ Enhanced Development Plan for APE
-# Generated: 2025-06-12
+# Generated: 2025-06-17
 
 ## 1. Key Findings
 1. The MCP integration is solid, but
@@ -21,7 +21,7 @@
 | P0 | **Done** – Introduce `TokenCounter` (local tokenizer) | dev-agent | implemented in `ape.utils.count_tokens` (uses HF `transformers`, LRU-cached) |
 | P0 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
 | P0 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
-| P0 | 🔄 **In&nbsp;Progress** – Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | exposing `conversation://` & `schema://` URIs |
+| P0 | **Done** – Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | Exposed via `conversation://` & `schema://` URIs |
 | P0 | **NEW** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
 | P1 | 🔄 **Planned** – Sliding context-window logic based on live token count | dev-agent | automatic trimming pending resource layer |
 | P1 | **Planned** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | requires `summarize_text` tool |
@@ -52,7 +52,7 @@
    - All chat/database ops are now awaitable; DB layer uses `aiosqlite`.
 2. **M1 – Prompt & Resource Parity (former P0+P2)** *(current)*
    - ✅ Prompt Registry implemented & served via MCP.  
-   - 🔄 Resource Registry in progress (`conversation://*`, `schema://*`).
+   - ✅ Resource Registry implemented (`conversation://*`, `schema://*`).
    - ⏳ Next: Error Bus resource, unified discovery.
 3. **M2 – Context Intelligence**
    - Sliding window + hybrid summarisation.  
@@ -147,4 +147,4 @@ graph TD
 - **Writeable reflections**: `reflection_logger` & `self_inspect` tools enable meta-reasoning.
 - **Security & audit**: JWT signing retained; audit trail via ErrorLog & Memory logs.
 - **Community growth**: Marketplace scaffold and prompt UI scheduled for M5.
-- **Research path**: Federation PoC & online learning targeted for M6. 
+- **Research path**: Federation PoC & online learning targeted for M6.
