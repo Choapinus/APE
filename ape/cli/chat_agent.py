@@ -11,6 +11,7 @@ from loguru import logger
 from ape.settings import settings
 from ape.cli.context_manager import ContextManager
 from ape.cli.mcp_client import MCPClient
+from ape.utils import count_tokens, get_ollama_model_info
 
 
 class ChatAgent:
@@ -49,6 +50,17 @@ class ChatAgent:
         self.mcp_client = mcp_client
         self.context_manager = context_manager
         self.agent_name = agent_name
+
+        # ------------------------------------------------------------------
+        # Cache Ollama model metadata once per agent instance for efficiency
+        # ------------------------------------------------------------------
+        try:
+            self.model_info = get_ollama_model_info(settings.LLM_MODEL)
+            self.context_limit: int | None = self.model_info.get("context_length")  # type: ignore[arg-type]
+        except Exception as exc:
+            logger.warning(f"Could not retrieve model info: {exc}")
+            self.model_info = {}
+            self.context_limit = None
 
     # ------------------------------------------------------------------
     # MCP capability discovery helpers
@@ -272,6 +284,12 @@ class ChatAgent:
             {"role": "user", "content": message},
         ]
 
+        # Pre-compute token cost for the *tools* specification once per call
+        try:
+            tools_tokens = count_tokens(json.dumps(capabilities["tools"]))
+        except Exception:
+            tools_tokens = 0
+
         client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
         max_iter = settings.MAX_TOOLS_ITERATIONS
         iteration = 0
@@ -280,6 +298,40 @@ class ChatAgent:
         while iteration < max_iter:
             current_chunk = ""
             has_tool_calls = False
+
+            # --------------------------------------------------------------
+            # Re-evaluate prompt size each loop iteration (messages grow)
+            # --------------------------------------------------------------
+            try:
+                # token stats for current messages
+                msg_tokens = sum(count_tokens(m.get("content", "")) for m in exec_conversation)
+                total_tokens = msg_tokens + tools_tokens
+
+                # Summary line
+                logger.debug(
+                    f"[TokenUsage] messages_tokens={msg_tokens} | tools_tokens={tools_tokens} | "
+                    f"total_tokens={total_tokens} / limit={self.context_limit if self.context_limit else 'unknown'}"
+                )
+
+                # Per-message detail
+                for idx, m in enumerate(exec_conversation):
+                    try:
+                        tok = count_tokens(m.get("content", ""))
+                        snippet = m.get("content", "")[:80].replace("\n", " ")
+                        logger.debug(f"[TokenDetail] #{idx} {m['role']} tokens={tok} | {snippet}…")
+                    except Exception:
+                        continue
+
+                # overflow warning if we know the limit
+                if self.context_limit and total_tokens > self.context_limit:
+                    excess = total_tokens - self.context_limit
+                    logger.warning(
+                        f"⚠️ Context window size exceeded by {excess} tokens "
+                        f"({total_tokens}/{self.context_limit})."
+                    )
+
+            except Exception as exc:
+                logger.debug(f"Token counting failed: {exc}")
 
             stream = await client.chat(
                 model=settings.LLM_MODEL,

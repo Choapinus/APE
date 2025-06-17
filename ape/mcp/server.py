@@ -13,6 +13,7 @@ from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
 
 from loguru import logger
+from ape.utils import setup_logger
 
 from .session_manager import get_session_manager
 from .plugin import discover
@@ -137,6 +138,9 @@ def create_mcp_server() -> Server:
 
 async def run_server():
     """Run the MCP server."""
+    # ensure sinks configured
+    setup_logger()
+
     logger.info("🚀 [MCP SERVER] Starting APE MCP Server...")
     
     server = create_mcp_server()

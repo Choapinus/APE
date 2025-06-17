@@ -16,6 +16,7 @@ from datetime import datetime
 
 from loguru import logger
 import ollama
+from ape.utils import setup_logger
 
 from ape.mcp.session_manager import get_session_manager
 from ape.cli.context_manager import ContextManager
@@ -33,6 +34,11 @@ class APEChatCLI:
     """Command-line interface for APE chat functionality using MCP."""
     
     def __init__(self):
+        # ------------------------------------------------------------------
+        # Bootstrapping: configure log sinks once per process
+        # ------------------------------------------------------------------
+        setup_logger()
+
         self.session_id = str(uuid.uuid4())
         self.session_manager = get_session_manager()
         # Wrapper that manages the underlying MCP stdio connection

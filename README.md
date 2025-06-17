@@ -10,7 +10,10 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 - 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) conversation storage and retrieval
 - 🛠️ **8 Powerful Tools**: Database queries, conversation search, history management
 - 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
-- 📊 **Context Management**: Advanced context tracking across conversations
+- 🧮 **Token Budget Tracking**: Live token counting with context-window warnings based on the active Ollama model
+- 🔒 **HMAC-Signed Tool Results**: Every tool response is verified end-to-end for tamper resistance
+- 🔌 **Plugin System**: Extend functionality via `ape_mcp.tools` entry-points — zero-code changes required
+- ⚙️ **pydantic-settings Configuration**: Type-safe settings that can be overridden via a simple `.env` file
 - 🎯 **CLI Interface**: Rich command-line experience with real-time tool feedback
 - 🔍 **Conversation Search**: Full-text search across conversation history
 - 📈 **Session Analytics**: Detailed session statistics and interaction tracking
@@ -121,8 +124,9 @@ ape/
 │   ├── unit/                     # Unit tests
 │   └── integration/              # Integration tests
 ├── requirements.txt              # Python dependencies
-├── pyproject.toml               # Project configuration
-└── logs/                        # Application logs
+├── docs/                         # Markdown documentation & guides
+├── findings/                     # Design reviews and technical notes
+└── logs/                         # Application logs
 ```
 
 ### Core Components
@@ -177,29 +181,32 @@ APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompt
 
 ### Configuration File (`ape/settings.py`)
 
-APE uses a Python configuration file with sensible defaults. No environment variables need to be exported unless you want to override the defaults:
+APE relies on `pydantic-settings`; every field below can be overridden with environment variables or a `.env` file at the repository root.
 
 ```python
-# Current default settings in ape/settings.py
-LLM_MODEL = "qwen3:14b"                    # Active LLM model
-OLLAMA_BASE_URL = "http://localhost:11434" # Ollama server URL
-LOG_LEVEL = "DEBUG"                        # Logging verbosity
-UI_THEME = "dark"                          # Interface theme
-SHOW_THOUGHTS = True                       # Display AI reasoning
-PORT = 8000                                # Server port
+# Defaults as of June 2025
+PORT = 8000                      # MCP server port
+LOG_LEVEL = "DEBUG"              # Verbosity (DEBUG/INFO/WARNING)
+OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL
+LLM_MODEL = "qwen3:8b"           # Default model pulled via Ollama
+TEMPERATURE = 0.5                # Sampling temperature
+MAX_TOOLS_ITERATIONS = 15        # Max reasoning/tool loops per prompt
+UI_THEME = "dark"                # CLI theme (dark/light)
+SHOW_THOUGHTS = True             # Stream <think> content from the LLM
+MCP_HMAC_KEY = "dev-secret"      # Shared secret for tool-result signatures
+SESSION_DB_PATH = "ape/sessions.db"  # SQLite conversation store
 ```
 
 ### Optional Environment Variable Overrides
 
-If you want to customize settings without modifying the code, you can set these environment variables:
-
 ```bash
-# Optional: Override defaults with environment variables
-export LLM_MODEL="qwen3:8b"               # Use lighter model
-export OLLAMA_BASE_URL="http://remote:11434"  # Remote Ollama server
-export LOG_LEVEL="INFO"                   # Less verbose logging
-export UI_THEME="light"                   # Light theme
-export SHOW_THOUGHTS="false"              # Hide AI reasoning
+# Example .env / shell overrides
+LLM_MODEL=qwen3:14b               # Use a larger model
+TEMPERATURE=0.3                   # More deterministic output
+LOG_LEVEL=INFO                    # Quieter logs
+UI_THEME=light                    # Switch CLI theme
+MCP_HMAC_KEY=$(openssl rand -hex 16)  # Strong key for production
+MAX_TOOLS_ITERATIONS=20           # Allow deeper reasoning chains
 ```
 
 ### Supported LLM Models
@@ -209,22 +216,22 @@ APE has been tested with various Ollama models:
 - **qwen3:14b** (recommended) - Best balance of capability and performance
 - **qwen3:8b** - Lighter alternative with good tool usage
 - **llama3.1** - Tools capable but more rigid
-- **gemma3:4b** - Lighter model with basic functionality
+- **gemma3:4b** - Lighter model with basic functionality. Only tested with `PetrosStav/gemma3-tools:4b`
 
 ## 🧪 Testing
 
-Run the comprehensive test suite:
+Run the full test suite or focus on a subset:
 
 ```bash
 # Run all tests
 pytest tests/
 
-# Run specific test categories
-pytest tests/unit/test_mcp_server.py     # MCP server tests
-pytest tests/unit/test_tool_diagnostics.py  # Tool functionality
-pytest tests/integration/               # Integration tests
+# Specific modules
+pytest tests/unit/test_mcp_server.py
+pytest tests/unit/test_chat_functionality.py
+pytest tests/integration/
 
-# Test MCP connectivity
+# Quick MCP connectivity check
 python test_mcp.py
 ```
 

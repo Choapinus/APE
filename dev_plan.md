@@ -7,18 +7,23 @@
    - Errors from tool calls are not persisted in a structured way.
    - Token counting currently requires a second Ollama call.
    - Context-window trimming is manual / size-blind.
+   - No structured short-term (sliding) or long-term (vector) memory abstraction exists; makes scaling to multi-turn sessions brittle.
    - No embeddings or RAG memory yet; retrieval would boost long-term reasoning.
    - Prompts & Resources are not yet exposed via MCP endpoints.
    - Plugin discovery only covers Tools, not Prompts/Resources.
    - HMAC signing is present, but key handling & expiry could be improved.
+   - Current persistence layer is SQLite; scalable document store options (Mongo/Postgres-JSONB) under consideration.
 
 ## 2. Immediate Objectives (📅 Sprint-0)
 | Priority | Task | Owner | Notes |
 |----------|------|-------|-------|
 | P0 | **Done** | dev-backend | Delivered in latest refactor |
-| P0 | Introduce `TokenCounter` (local tokenizer) | dev-agent | use `tiktoken` (Qwen) or `sentencepiece` |
+| P0 | **Done** – Introduce `TokenCounter` (local tokenizer) | dev-agent | implemented in `ape.utils.count_tokens` (uses HF `transformers`, LRU-cached) |
 | P1 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
-| P1 | Sliding context-window logic based on live token count | dev-agent | integrate with `ContextManager` |
+| P1 | 🔄 **In&nbsp;Progress** – Sliding context-window logic based on live token count | dev-agent | Monitoring in place (token budget + warnings); automatic trimming/summarisation still TBD |
+| P1 | **NEW** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` **only** on overflow) | dev-agent | Aligns with design decision 2025-06-17 |
+| P1 | Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | foundation for automated context trimming |
+| P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
 | P1 | Central error bus + DB persistence | dev-backend | new table `tool_errors` |
 | P2 | Prompt / Resource registry + MCP handlers | dev-backend | parity with `tools` feature |
 | P2 | Extend plugin discovery to Prompts/Resources | dev-platform | unify entry-point group |
@@ -32,10 +37,12 @@
 | P3 | Summarize session tool `summarize_session` | dev-agent | stores TL;DR into embedding index |
 | P3 | Rate-limiting middleware | dev-platform | prevents runaway tool loops |
 | P3 | Embedding backend abstraction | dev-ml | hot-swap MiniLM/BGE/Ollama embeddings |
+| P3 | Storage backend abstraction (`StorageBackend` interface) | dev-backend | Keep SQLite default; optional Mongo/Postgres implementation for multi-agent scaling |
 | P3 | Telemetry resource `health://stats` | dev-platform | uptime & latency metrics |
 | P3 | Online prompt authoring UI | dev-frontend | web/cli playground for `.prompt` templates |
 | P3 | Self-inspect tool `self_inspect` | dev-agent | agent can query its own state & limits |
 | P3 | Reflection logger (writes to memory) | dev-agent | post-tool call success/failure notes |
+| P3 | `VectorMemory` + FAISS/Chroma backend | dev-ml | long-term semantic recall |
 | P4 | Plugin marketplace scaffold | dev-platform | docs + entry-point registry for community |
 | P4 | Distributed agent federation PoC | dev-research | remote MCP peer discovery & trust |
 
@@ -72,6 +79,8 @@
 1. Do we need multi-tenant session isolation now or later?
 2. Which embedding model balances speed ↔ memory best on WSL2?
 3. Should prompts live as markdown templates or Python functions?
+4. How to benchmark quality loss from overflow  → summary → drop cycle?  
+5. When to chain summaries (summary-of-summaries) to avoid drift?
 
 ## 7. Next Review
 Schedule design-review meeting once **M1** tasks reach PR-ready state or by **2025-06-20**, whichever comes first.
