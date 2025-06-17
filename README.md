@@ -8,7 +8,7 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 
 - 🔗 **MCP Protocol Compliance**: Built with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 - 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) conversation storage and retrieval
-- 🛠️ **8 Powerful Tools**: Database queries, conversation search, history management
+- 🛠️ **9 Powerful Tools**: Database queries, resource access, conversation search, history management
 - 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
 - 🧮 **Token Budget Tracking**: Live token counting with context-window warnings based on the active Ollama model
 - 🔒 **HMAC-Signed Tool Results**: Every tool response is verified end-to-end for tamper resistance
@@ -165,6 +165,7 @@ APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompt
 | `get_last_N_user_interactions` | Recent user messages | Understanding user patterns |
 | `get_last_N_tool_interactions` | Recent tool usage | Tool usage analytics |
 | `get_last_N_agent_interactions` | Recent AI responses | Response quality analysis |
+| `read_resource` | Read any registry resource by URI (`conversation://*`, `schema://*`, …) | Access conversation snapshots, DB schema, etc. |
 
 ### 📊 Resources
 

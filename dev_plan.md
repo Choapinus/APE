@@ -22,6 +22,7 @@
 | P0 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
 | P0 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
 | P0 | **Done** – Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | Exposed via `conversation://` & `schema://` URIs |
+| P0 | **Done** – read_resource wrapper tool (bridge Resources → Tools) | dev-backend | allows LLM to fetch any registry resource |
 | P0 | **NEW** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
 | P1 | 🔄 **Planned** – Sliding context-window logic based on live token count | dev-agent | automatic trimming pending resource layer |
 | P1 | **Planned** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | requires `summarize_text` tool |
@@ -139,7 +140,7 @@ graph TD
 
   ContextManager --> EmbeddingIndex
   MemoryResource --> EmbeddingIndex
-``` 
+```
 
 ## 9. Expert-Level Recommendations Incorporated
 - **Protocol symmetry**: Prompts & Resources now share the unified plugin registry.
