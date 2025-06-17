@@ -34,12 +34,22 @@ def _start_watchdog(path: Path) -> None:  # noqa: D401 – internal helper
         from watchdog.events import FileSystemEventHandler
 
         class _ReloadHandler(FileSystemEventHandler):
-            def on_any_event(self, event):  # noqa: D401 – overridden API
+            def on_modified(self, event):  # noqa: D401 – watchdog callback
                 if event.is_directory:
                     return
-                if event.src_path.endswith(".prompt.md"):
-                    refresh()
-                    print("🔄 [PromptRegistry] Reloaded prompts due to change in", event.src_path)
+                if not event.src_path.endswith(".prompt.md"):
+                    return
+                refresh()
+                try:
+                    from loguru import logger
+
+                    logger.debug(
+                        "🔄 [PromptRegistry] Reloaded prompts due to change in {}", event.src_path
+                    )
+                except Exception:
+                    print(
+                        "🔄 [PromptRegistry] Reloaded prompts due to change in", event.src_path
+                    )
 
         observer = Observer()
         observer.schedule(_ReloadHandler(), str(path), recursive=False)

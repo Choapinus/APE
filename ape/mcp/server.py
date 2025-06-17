@@ -59,8 +59,20 @@ def create_mcp_server() -> Server:
                 get_session_manager().save_error(name, arguments, error_msg)
                 return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
+            # ------------------------------------------------------------------
+            # Sanitize arguments: drop keys not declared in the JSON schema to
+            # avoid runtime errors in tool implementations that expect a fixed
+            # signature (e.g. get_database_info takes no params).
+            # ------------------------------------------------------------------
+
+            schema_props = registry[name]["inputSchema"].get("properties", {})
+            if schema_props:
+                arguments = {k: v for k, v in arguments.items() if k in schema_props}
+            else:
+                # No properties defined → tool expects zero arguments
+                arguments = {}
+
             impl_fn = registry[name]["fn"]
-            # ensure kwargs compatible
             result_text = await impl_fn(**arguments)
 
             # Wrap successful result in a ToolResult and HMAC-signed envelope

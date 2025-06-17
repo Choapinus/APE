@@ -19,14 +19,15 @@
 |----------|------|-------|-------|
 | P0 | **Done** | dev-backend | Delivered in latest refactor |
 | P0 | **Done** – Introduce `TokenCounter` (local tokenizer) | dev-agent | implemented in `ape.utils.count_tokens` (uses HF `transformers`, LRU-cached) |
-| P1 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
-| P1 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
-| P1 | 🔄 **In&nbsp;Progress** – Sliding context-window logic based on live token count | dev-agent | Monitoring in place (token budget + warnings); automatic trimming/summarisation still TBD |
-| P1 | **NEW** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` **only** on overflow) | dev-agent | Aligns with design decision 2025-06-17 |
+| P0 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
+| P0 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
+| P0 | 🔄 **In&nbsp;Progress** – Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | exposing `conversation://` & `schema://` URIs |
+| P0 | **NEW** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
+| P1 | 🔄 **Planned** – Sliding context-window logic based on live token count | dev-agent | automatic trimming pending resource layer |
+| P1 | **Planned** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | requires `summarize_text` tool |
 | P1 | Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | foundation for automated context trimming |
 | P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
 | P1 | Central error bus + DB persistence | dev-backend | new table `tool_errors` |
-| P2 | Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | parity with `tools` feature |
 | P2 | Extend plugin discovery to Prompts **and** Resources | dev-platform | unify entry-point group |
 | P2 | HMAC-JWT envelope w/ expiry & issuer | dev-security | `.env` for secret/key rotation |
 | P3 | Embeddings & FAISS memory index | dev-ml | start with MiniLM-L6 or `bge-small` |
@@ -49,14 +50,14 @@
 ## 3. Milestones
 1. **Completed**
    - All chat/database ops are now awaitable; DB layer uses `aiosqlite`.
-2. **M1 – Safe IPC & Prompt Hygiene (P0 + P1)** *(in progress)*
-   - ✅ Pydantic schemas integrated.  
+2. **M1 – Prompt & Resource Parity (former P0+P2)** *(current)*
    - ✅ Prompt Registry implemented & served via MCP.  
-   - ⏳ Next: error bus persistence, token budgeting, hybrid summarisation.
-3. **M2 – Discovery Parity (extended P2)**
-   - Resources registry + MCP handlers.  
-   - Unified plugin discovery (Tools/Prompts/Resources).
-4. **M3 – Memory-Augmented Agent (P3)**
+   - 🔄 Resource Registry in progress (`conversation://*`, `schema://*`).
+   - ⏳ Next: Error Bus resource, unified discovery.
+3. **M2 – Context Intelligence**
+   - Sliding window + hybrid summarisation.  
+   - `summarize_text` tool & WindowMemory.
+4. **M3 – Memory-Augmented Agent (Vector)**
    - Embedding store, RAG resource, improved recall.
 5. **M4 – Security Hardened**
    - JWT-style envelopes, secret rotation, CI gate for secrets.

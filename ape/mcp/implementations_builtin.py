@@ -49,7 +49,7 @@ async def get_conversation_history(**kwargs):
     return result_json
 
 @tool("get_database_info", "Get database schema and stats", {"type": "object", "properties": {}})
-async def get_database_info():
+async def get_database_info(**_):  # accept & ignore any extraneous args
     return await get_database_info_impl()
 
 search_schema = {
