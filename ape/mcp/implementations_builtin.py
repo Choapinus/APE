@@ -114,12 +114,26 @@ resource_schema = {
 @tool("read_resource", "Read a registry resource (conversation://*, schema://*, …)", resource_schema)
 async def read_resource_tool(uri: str, limit: int | None = None):
     """Expose Resource Registry via a standard tool call so the LLM can read URIs autonomously."""
+    ALLOWED_SCHEMES = ("conversation://", "schema://")
+
+    if not any(uri.startswith(s) for s in ALLOWED_SCHEMES):
+        return f"SECURITY_ERROR: URI scheme not permitted: {uri}"
+
     try:
         if limit is not None:
             mime, content = await _read_resource(uri, limit=limit)
         else:
             mime, content = await _read_resource(uri)
-        # Keep MIME available for future branching but return raw content for now
+        # Guard: cap payload size to 64k to avoid memory abuse
+        MAX_LEN = 65536
+        if len(content) > MAX_LEN:
+            return "SECURITY_ERROR: Resource content exceeds safe size limit"
+
+        # MIME-type whitelist – allow only safe text-based formats
+        ALLOWED_MIME = ("application/json", "text/plain", "text/markdown")
+        if mime not in ALLOWED_MIME:
+            return f"SECURITY_ERROR: MIME type '{mime}' not permitted"
+
         return content
     except Exception as exc:
         return f"ERROR reading resource {uri}: {exc}" 

@@ -42,73 +42,48 @@ async def execute_database_query_impl(sql_query: str) -> str:
     """Implementation of execute_database_query without MCP decoration."""
     logger.info(f"🗃️ [IMPL] Executing database query: {sql_query[:100]}...")
     
-    # Validate input
+    # ------------------------------------------------------------------
+    # SECURITY HARDENING – Accept *read-only* SELECT queries only
+    # ------------------------------------------------------------------
     if not sql_query or not sql_query.strip():
-        error_msg = "ERROR: Empty or invalid SQL query provided"
+        error_msg = "ERROR: Empty SQL query provided"
         logger.error(f"💥 [IMPL] {error_msg}")
         return error_msg
-    
-    try:
-        # For non-SELECT queries, check table existence first
-        if not sql_query.strip().upper().startswith('SELECT'):
-            # Extract table name (basic extraction, could be improved)
-            words = sql_query.split()
-            table_idx = -1
-            for i, word in enumerate(words):
-                if word.upper() in ('INTO', 'UPDATE', 'FROM', 'TABLE'):
-                    table_idx = i + 1
-                    break
-            
-            if table_idx >= 0 and table_idx < len(words):
-                table_name = words[table_idx].strip('`;')
-                if not await check_table_exists(table_name):
-                    return f"Error: Table '{table_name}' does not exist. Available tables: {await list_tables()}"
 
+    normalized = sql_query.strip().rstrip(";").lstrip().upper()
+
+    # Reject anything that is not a simple SELECT … FROM …
+    if not normalized.startswith("SELECT"):
+        return (
+            "SECURITY_ERROR: Only read-only SELECT statements are allowed. "
+            "Destructive or mutating queries are blocked."
+        )
+
+    # Very coarse injection guard – block multiple statements & keywords
+    forbidden_tokens = [";", "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "ATTACH", "DETACH"]
+    if any(tok in normalized for tok in forbidden_tokens):
+        return "SECURITY_ERROR: Potentially unsafe SQL detected – query rejected."
+
+    try:
         async with aiosqlite.connect(DB_PATH) as conn:
             # Use WAL journal mode for better concurrency during async access
             await conn.execute("PRAGMA journal_mode=WAL")
             cursor = await conn.cursor()
             
-            # Start transaction
-            await conn.execute("BEGIN")
+            # Execute the SELECT query (read-only → no transaction needed)
+            await cursor.execute(sql_query)
             
-            try:
-                # Execute the query
-                await cursor.execute(sql_query)
-                
-                # For SELECT queries, return the results
-                if sql_query.strip().upper().startswith('SELECT'):
-                    # Get column names
-                    columns = [description[0] for description in cursor.description]
-                    
-                    # Fetch results
-                    rows = await cursor.fetchall()
-                    
-                    if not rows:
-                        logger.info("📊 [IMPL] Query executed successfully, no results found")
-                        result = "QUERY_RESULT: No data found - the query executed successfully but returned no rows."
-                    else:
-                        # Format as JSON with clear indicator
-                        results = []
-                        for row in rows:
-                            row_dict = dict(zip(columns, row))
-                            results.append(row_dict)
-                        result = f"QUERY_RESULT: {json.dumps(results, indent=2, default=str)}"
-                        logger.info(f"✅ [IMPL] SELECT query returned {len(results)} rows")
-                else:
-                    # For non-SELECT queries, commit and return affected rows
-                    await conn.commit()
-                    affected_rows = cursor.rowcount
-                    result = f"Query executed successfully. Rows affected: {affected_rows}"
-                    logger.info(f"✅ [IMPL] Non-SELECT query completed successfully, {affected_rows} rows affected")
-                
-                return result
-                
-            except Exception as e:
-                # Rollback on error
-                await conn.rollback()
-                raise e
-                
+            columns = [description[0] for description in cursor.description]
+            rows = await cursor.fetchall()
+            
+            if not rows:
+                logger.info("📊 [IMPL] Query executed successfully, no results found")
+                return "QUERY_RESULT: No data found – the query returned zero rows."
+            
+            results = [dict(zip(columns, row)) for row in rows]
+            logger.info(f"✅ [IMPL] SELECT query returned {len(results)} rows")
+            return f"QUERY_RESULT: {json.dumps(results, indent=2, default=str)}"
+            
     except aiosqlite.Error as e:
         logger.error(f"💥 [IMPL] Database error: {e}")
         return f"Database error: {str(e)}"

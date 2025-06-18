@@ -660,6 +660,10 @@ The agent will use its natural reasoning to break down complex tasks!
                     
                     response = await self.chat_agent.chat_with_llm(user_input, conversation)
                     
+                    # Ensure the cursor moves to the next line before showing the prompt again
+                    if not response.endswith("\n"):
+                        print()
+                    
                     # Save user + assistant turn in history
                     try:
                         existing_history = self.session_manager.get_history(self.session_id)

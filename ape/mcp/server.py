@@ -2,8 +2,8 @@
 
 import json
 import asyncio
+import time
 from typing import Any, Sequence
-import hmac, hashlib
 from uuid import uuid4
 import os
 
@@ -21,6 +21,10 @@ from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 from ape.prompts import list_prompts as _list_prompts, render_prompt
 from ape.resources import list_resources as _list_resources, read_resource as _read_resource
 
+from ape.settings import settings  # local import to avoid circular deps
+
+import jwt  # PyJWT
+
 
 def create_mcp_server() -> Server:
     """Create and configure the MCP server with all tools and resources."""
@@ -29,10 +33,17 @@ def create_mcp_server() -> Server:
     server = Server("ape-server")
     registry = discover()
 
-    SECRET = os.environ.get("MCP_HMAC_KEY", "dev-secret").encode()
+    SECRET = settings.MCP_JWT_KEY  # str
 
-    def _sign(result_id: str, payload: str) -> str:
-        return hmac.new(SECRET, f"{result_id}{payload}".encode(), hashlib.sha256).hexdigest()
+    def _encode_token(data: dict) -> str:
+        """Return HS256-signed JWT containing *data* plus issued-at timestamp."""
+        now = int(time.time())
+        payload = {
+            **data,
+            "iat": now,
+            "exp": now + 600,  # token valid for 10 minutes
+        }
+        return jwt.encode(payload, SECRET, algorithm="HS256")
 
     @server.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
@@ -86,7 +97,7 @@ def create_mcp_server() -> Server:
             envelope = {
                 "result_id": rid,
                 "payload": payload_str,
-                "sig": _sign(rid, payload_str),
+                "sig": _encode_token({"result_id": rid, "payload": payload_str}),
             }
 
             return [types.TextContent(type="text", text=json.dumps(envelope))]

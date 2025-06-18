@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
+import os
 
 
 class Settings(BaseSettings):
@@ -21,17 +23,49 @@ class Settings(BaseSettings):
     UI_THEME: str = Field("dark", description="CLI theme (dark/light)")
     SHOW_THOUGHTS: bool = Field(True, description="Whether to stream the model's <think> content")
 
-    # Security
-    MCP_HMAC_KEY: str = Field("dev-secret", description="Shared secret used to sign/verify tool results")
-
     # Database
     SESSION_DB_PATH: str = Field("ape/sessions.db", description="Path to SQLite database that stores message history")
 
+    # Security – MUST be provided via environment or .env
+    # Preferred variable name is **MCP_JWT_KEY**.  For backward compatibility the
+    # old env var ``MCP_HMAC_KEY`` is still recognised but should be considered
+    # deprecated.
+
+    MCP_JWT_KEY: str | None = Field(
+        default=None,
+        alias="MCP_JWT_KEY",  # primary env name
+        description="Shared secret used to sign/verify tool results via JWT (HS256)",
+    )
+
+    # Allow legacy env var
     model_config = {
         "env_file": ".env",
         "case_sensitive": False,
         "extra": "ignore",
+        "env_prefix": "",
+        "env_allow_population_by_field_name": True,
+        "populate_by_name": True,
+        "env": {
+            "MCP_HMAC_KEY": "MCP_JWT_KEY",
+        },
     }
+
+    # ------------------------------------------------------------------
+    # Validators
+    # ------------------------------------------------------------------
+    @model_validator(mode="after")
+    def _ensure_secret_set(self):  # noqa: D401 – pydantic hook
+        """Fail fast if JWT signing secret is missing."""
+        if not self.MCP_JWT_KEY:
+            # Legacy fallback
+            legacy = os.getenv("MCP_HMAC_KEY")
+            if legacy:
+                object.__setattr__(self, "MCP_JWT_KEY", legacy)
+            else:
+                raise ValueError(
+                    "MCP_JWT_KEY is not set. Define it via environment variable (.env or export) before running APE."
+                )
+        return self
 
 
 settings = Settings() 

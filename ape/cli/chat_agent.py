@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import hmac, hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Sequence
 
@@ -12,6 +11,7 @@ from ape.settings import settings
 from ape.cli.context_manager import ContextManager
 from ape.cli.mcp_client import MCPClient
 from ape.utils import count_tokens, get_ollama_model_info
+import jwt  # PyJWT
 
 
 class ChatAgent:
@@ -244,19 +244,36 @@ class ChatAgent:
                 raw = res.content[0].text if res.content else ""
 
                 # ------------------------------------------------------
-                # Verify HMAC envelope & parse inner payload
+                # Verify JWT token & parse inner payload
                 # ------------------------------------------------------
                 verified = False
                 payload_text = ""
                 try:
                     env = json.loads(raw)
-                    rid = env.get("result_id")
-                    payload_text = env.get("payload", "")
-                    sig = env.get("sig", "")
-                    if rid and payload_text is not None and sig == self._sign(rid, payload_text):
+                    token = env.get("jwt") or env.get("sig") or ""
+                    if token:
+                        decoded = jwt.decode(
+                            token,
+                            settings.MCP_JWT_KEY,
+                            algorithms=["HS256"],
+                        )
+                        # token is valid if no exception raised
                         verified = True
-                except Exception:
-                    pass
+                        # If token contains 'payload' field use that; else use full decoded json
+                        payload_text = decoded.get("payload") if isinstance(decoded, dict) else str(decoded)
+                        if not payload_text:
+                            # fallback to entire decoded object as json
+                            payload_text = json.dumps(decoded, ensure_ascii=False)
+                    else:
+                        # token not present; treat env as legacy unverified payload
+                        payload_text = env.get("payload", "") or raw
+                except jwt.ExpiredSignatureError:
+                    logger.warning("JWT token expired – rejecting.")
+                    payload_text = "❌ ERROR: Tool result signature expired."
+                except Exception as jwt_exc:
+                    # JWT decode failed; leave verified False and propagate raw content
+                    logger.warning(f"JWT verification failed: {jwt_exc}")
+                    payload_text = raw
 
                 from ape.prompts import render_prompt  # local import to avoid cycles
 
@@ -427,7 +444,4 @@ class ChatAgent:
                     cumulative_resp += current_chunk
                 break
 
-        return cumulative_resp
-
-    def _sign(self, rid: str, payload: str) -> str:
-        return hmac.new(settings.MCP_HMAC_KEY.encode(), f"{rid}{payload}".encode(), hashlib.sha256).hexdigest() 
+        return cumulative_resp 
