@@ -108,7 +108,7 @@ python cli_chat.py
 python test_mcp.py
 ```
 
-#### Available CLI Commands  *(stop pretending you didn't need a crib sheet)*
+#### Available CLI Commands
 
 Once in the chat interface:
 
