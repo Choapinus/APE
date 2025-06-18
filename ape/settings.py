@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     TEMPERATURE: float = Field(0.5, description="LLM sampling temperature")
     TOP_P: float = Field(0.9, description="Nucleus sampling parameter (probability mass)")
     TOP_K: int = Field(40, description="Top-K sampling parameter (number of candidates)")
+    SEED: int = Field(-1, description="Random seed for Ollama (−1 means random on every request)")
     MAX_TOOLS_ITERATIONS: int = Field(15, description="Max reasoning/tool iterations per user prompt")
 
     # UI (CLI) options
@@ -49,6 +50,7 @@ class Settings(BaseSettings):
         "populate_by_name": True,
         "env": {
             "MCP_HMAC_KEY": "MCP_JWT_KEY",
+            "OLLAMA_SEED": "SEED",
         },
     }
 

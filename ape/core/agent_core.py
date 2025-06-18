@@ -94,7 +94,8 @@ class AgentCore:
         except Exception:
             pass
 
-        logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
+        # logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
+        logger.trace(f"[Capabilities]\n{json.dumps(capabilities, indent=2)}")
         return capabilities
 
     async def create_dynamic_system_prompt(self, capabilities: Dict[str, Any]) -> str:
@@ -288,7 +289,9 @@ class AgentCore:
                 tools=capabilities["tools"],
                 options={"temperature": settings.TEMPERATURE,
                          "top_p": settings.TOP_P,
-                         "top_k": settings.TOP_K},
+                         "top_k": settings.TOP_K,
+                         "seed": settings.SEED,
+                         },
                 stream=True,
             )
 
