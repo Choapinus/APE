@@ -1,15 +1,32 @@
 import base64
 from io import BytesIO
-from PIL import Image
+from typing import TYPE_CHECKING
 from loguru import logger
 from functools import lru_cache
 import os
 
-def decode_base64_image(image_base64: str) -> Image.Image:
+if TYPE_CHECKING:  # pragma: no cover – typing only
+    from PIL import Image  # noqa: F401
+
+def decode_base64_image(image_base64: str) -> "Image.Image":
+    try:
+        from PIL import Image  # local import – heavy
+    except ImportError as exc:
+        raise RuntimeError(
+            "The 'Pillow' library is required for image decoding. Install it via 'pip install pillow'."
+        ) from exc
+
     image_data = base64.b64decode(image_base64)
     return Image.open(BytesIO(image_data)).convert("RGB")
 
-def encode_image_base64(image: Image.Image) -> str:
+def encode_image_base64(image: "Image.Image") -> str:
+    try:
+        from PIL import Image  # ensure Pillow present for type hints
+    except ImportError as exc:
+        raise RuntimeError(
+            "The 'Pillow' library is required for image encoding. Install it via 'pip install pillow'."
+        ) from exc
+
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode()

@@ -97,6 +97,62 @@ class SessionManager:
             logger.error(f"Failed to get all sessions: {e}")
             return {}
 
+    # ------------------------------------------------------------------
+    # Async variants (Step 1 – aiosqlite migration)
+    # ------------------------------------------------------------------
+
+    async def a_save_messages(self, session_id: str, messages: list):
+        """Async version of save_messages leveraging aiosqlite."""
+        try:
+            import aiosqlite
+            from datetime import datetime
+
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("DELETE FROM history WHERE session_id = ?", (session_id,))
+
+                insert_sql = (
+                    "INSERT INTO history (session_id, role, content, images, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?)"
+                )
+                for message in messages:
+                    await conn.execute(
+                        insert_sql,
+                        (
+                            session_id,
+                            message.get("role"),
+                            message.get("content"),
+                            json.dumps(message.get("images")) if message.get("images") else None,
+                            message.get("timestamp", datetime.now().isoformat()),
+                        ),
+                    )
+                await conn.commit()
+        except Exception as exc:
+            logger.error(f"[async] Failed to save messages for session {session_id}: {exc}")
+            raise
+
+    async def a_get_history(self, session_id: str):
+        """Async version of get_history leveraging aiosqlite."""
+        try:
+            import aiosqlite
+            async with aiosqlite.connect(self.db_path) as conn:
+                query = (
+                    "SELECT role, content, images, timestamp FROM history "
+                    "WHERE session_id = ? ORDER BY timestamp ASC"
+                )
+                async with conn.execute(query, (session_id,)) as cursor:
+                    rows = await cursor.fetchall()
+
+            history = []
+            for role, content, images_json, timestamp in rows:
+                message = {"role": role, "content": content, "timestamp": timestamp}
+                if images_json:
+                    message["images"] = json.loads(images_json)
+                history.append(message)
+            return history
+        except Exception as exc:
+            logger.error(f"[async] Failed to get history for session {session_id}: {exc}")
+            return []
+
 _session_manager: SessionManager | None = None
 
 def get_session_manager():

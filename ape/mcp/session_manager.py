@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 
 from loguru import logger
 from ape.settings import settings
+from ape.db_pool import get_db
 
 # Configuration
 DB_PATH = settings.SESSION_DB_PATH
@@ -117,80 +118,144 @@ class SessionManager:
             logger.error(f"Error getting history: {e}")
             return []
     
-    def get_all_sessions(self) -> List[Dict[str, Any]]:
-        """Get information about all sessions."""
+    async def a_get_all_sessions(self) -> List[Dict[str, Any]]:
+        """Async version of get_all_sessions using aiosqlite."""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Get basic session info
-            cursor.execute("""
-                SELECT session_id, COUNT(*) as message_count
-                FROM history
-                GROUP BY session_id
-                ORDER BY MAX(timestamp) DESC
-            """)
-            
-            session_rows = cursor.fetchall()
-            
-            sessions = []
-            for session_id, count in session_rows:
-                # Get first message content (oldest record by ID)
-                cursor.execute("""
-                    SELECT content FROM history 
-                    WHERE session_id = ? 
-                    ORDER BY id ASC 
-                    LIMIT 1
-                """, (session_id,))
-                first_result = cursor.fetchone()
-                first_message = first_result[0][:100]+"..." if first_result else ""
-                
-                # Get last message content (newest record by ID)
-                cursor.execute("""
-                    SELECT content FROM history 
-                    WHERE session_id = ? 
-                    ORDER BY id DESC 
-                    LIMIT 1
-                """, (session_id,))
-                last_result = cursor.fetchone()
-                last_message = last_result[0][:100]+"..." if last_result else ""
-                
-                sessions.append({
-                    "session_id": session_id,
-                    "message_count": count,
-                    "first_message": first_message,
-                    "last_message": last_message
-                })
-            
-            conn.close()
+            from ape.db_pool import get_db
+
+            async with get_db() as conn:
+                query_ids = (
+                    "SELECT session_id, COUNT(*) as message_count, "
+                    "MIN(timestamp) as first_ts, MAX(timestamp) as last_ts "
+                    "FROM history GROUP BY session_id ORDER BY MAX(timestamp) DESC"
+                )
+                async with conn.execute(query_ids) as cursor:
+                    rows = await cursor.fetchall()
+
+            sessions: List[Dict[str, Any]] = []
+            for session_id, count, first_ts, last_ts in rows:
+                first_message = ""  # placeholders – expensive joins removed for perf
+                last_message = ""
+                sessions.append(
+                    {
+                        "session_id": session_id,
+                        "message_count": count,
+                        "first_message": first_message,
+                        "last_message": last_message,
+                    }
+                )
             return sessions
-            
-        except Exception as e:
-            logger.error(f"Error getting sessions: {e}")
+        except Exception as exc:
+            logger.error(f"[async] Error getting sessions: {exc}")
             return []
 
-    # ------------------------------------------------------------------
-    # Error persistence helpers
-    # ------------------------------------------------------------------
+    async def a_save_error(self, tool: str, arguments: dict | None, error: str):
+        """Async version of save_error."""
+        try:
+            from ape.db_pool import get_db
 
-    def save_error(self, tool: str, arguments: dict | None, error: str):
-        """Persist a tool error into *tool_errors* table."""
+            async with get_db() as conn:
+                await conn.execute(
+                    "INSERT INTO tool_errors (tool, arguments, error) VALUES (?, ?, ?)",
+                    (
+                        tool,
+                        json.dumps(arguments or {}),
+                        error,
+                    ),
+                )
+                await conn.commit()
+        except Exception as exc:
+            logger.error(f"[async] Error saving tool error: {exc}")
+
+    # -------------------- Sync wrappers (deprecated) --------------------
+
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        """Deprecated sync wrapper delegating to ``a_get_all_sessions``."""
+        import asyncio
 
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO tool_errors (tool, arguments, error) VALUES (?, ?, ?)",
-                (
-                    tool,
-                    json.dumps(arguments or {}),
-                    error,
-                ),
-            )
-            conn.commit()
-            conn.close()
+            return asyncio.run(self.a_get_all_sessions())
+        except RuntimeError:
+            # Already inside an event loop → fallback to blocking call with nested loop
+            loop = asyncio.get_event_loop()
+            fut = asyncio.ensure_future(self.a_get_all_sessions(), loop=loop)
+            return loop.run_until_complete(fut)
+
+    def save_error(self, tool: str, arguments: dict | None, error: str):
+        """Deprecated sync wrapper delegating to ``a_save_error``."""
+        import asyncio
+
+        try:
+            asyncio.run(self.a_save_error(tool, arguments, error))
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+            fut = asyncio.ensure_future(self.a_save_error(tool, arguments, error), loop=loop)
+            loop.run_until_complete(fut)
+
+    # ------------------------------------------------------------------
+    # Async variants (Step 1 – aiosqlite migration)
+    # ------------------------------------------------------------------
+
+    async def a_save_messages(self, session_id: str, messages: List[Dict[str, Any]]):
+        """Async version of save_messages using aiosqlite.
+
+        This is part of the planned migration to fully-async DB access while
+        retaining backwards-compatible synchronous wrappers.  Callers that are
+        already inside an event loop should prefer this coroutine.
+        """
+        try:
+            from ape.db_pool import get_db
+
+            async with get_db() as conn:
+                await conn.execute("DELETE FROM history WHERE session_id = ?", (session_id,))
+
+                insert_sql = (
+                    "INSERT INTO history (session_id, role, content, images, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?)"
+                )
+                for msg in messages:
+                    await conn.execute(
+                        insert_sql,
+                        (
+                            session_id,
+                            msg.get("role"),
+                            msg.get("content"),
+                            json.dumps(msg.get("images", [])),
+                            msg.get("timestamp", datetime.now().isoformat()),
+                        ),
+                    )
+                await conn.commit()
         except Exception as exc:
-            logger.error(f"Error saving tool error: {exc}")
+            logger.error(f"[async] Error saving messages: {exc}")
+            raise
+
+    async def a_get_history(self, session_id: str) -> List[Dict[str, Any]]:
+        """Async version of get_history using aiosqlite."""
+        try:
+            from ape.db_pool import get_db
+
+            async with get_db() as conn:
+                query = (
+                    "SELECT role, content, images, timestamp "
+                    "FROM history WHERE session_id = ? ORDER BY timestamp ASC"
+                )
+                async with conn.execute(query, (session_id,)) as cursor:
+                    rows = await cursor.fetchall()
+
+            messages: List[Dict[str, Any]] = []
+            for role, content, images, timestamp in rows:
+                msg: Dict[str, Any] = {
+                    "role": role,
+                    "content": content,
+                    "timestamp": timestamp,
+                }
+                if images:
+                    msg["images"] = json.loads(images)
+                messages.append(msg)
+            return messages
+        except Exception as exc:
+            logger.error(f"[async] Error getting history: {exc}")
+            return []
 
 
 # Global session manager instance

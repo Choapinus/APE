@@ -157,10 +157,10 @@ class APEChatCLI:
             logger.error(f"❌ [MCP CLIENT] Error retrieving history: {e}")
             print(f"❌ Error retrieving history: {e}")
     
-    def show_session_info(self):
+    async def show_session_info(self):
         """Show current session information."""
         try:
-            sessions = self.session_manager.get_all_sessions()
+            sessions = await self.session_manager.a_get_all_sessions()
             current_session = next((s for s in sessions if s["session_id"] == self.session_id), None)
             
             print(f"\n🔍 Session Information:")
@@ -406,13 +406,13 @@ class APEChatCLI:
             
             # Save complete conversation including thinking process
             # Get existing history and append current turn
-            existing_history = self.session_manager.get_history(self.session_id)
+            existing_history = await self.session_manager.a_get_history(self.session_id)
             current_turn = [
                 {"role": "user", "content": message, "timestamp": ""},
                 *turn_messages
             ]
             all_messages = existing_history + current_turn
-            self.session_manager.save_messages(self.session_id, all_messages)
+            await self.session_manager.a_save_messages(self.session_id, all_messages)
             
             print()
             return cumulative_response
@@ -632,7 +632,7 @@ The agent will use its natural reasoning to break down complex tasks!
                         elif user_input == '/history':
                             await self.show_history()
                         elif user_input == '/session':
-                            self.show_session_info()
+                            await self.show_session_info()
                         elif user_input == '/tools':
                             await self.show_tools()
                         elif user_input == '/clear':
@@ -649,7 +649,7 @@ The agent will use its natural reasoning to break down complex tasks!
                     # Get conversation history for context
                     conversation = []
                     try:
-                        history = self.session_manager.get_history(self.session_id)
+                        history = await self.session_manager.a_get_history(self.session_id)
                         for msg in history:
                             conversation.append({
                                 "role": msg["role"],
@@ -666,12 +666,12 @@ The agent will use its natural reasoning to break down complex tasks!
                     
                     # Save user + assistant turn in history
                     try:
-                        existing_history = self.session_manager.get_history(self.session_id)
+                        existing_history = await self.session_manager.a_get_history(self.session_id)
                         turn = [
                             {"role": "user", "content": user_input, "timestamp": ""},
                             {"role": "assistant", "content": response, "timestamp": ""},
                         ]
-                        self.session_manager.save_messages(self.session_id, existing_history + turn)
+                        await self.session_manager.a_save_messages(self.session_id, existing_history + turn)
                     except Exception as e:
                         logger.error(f"Error saving chat history: {e}")
                     

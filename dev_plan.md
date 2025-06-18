@@ -30,7 +30,8 @@
 | P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
 | P1 | Central error bus + DB persistence | dev-backend | new table `tool_errors` |
 | P2 | Extend plugin discovery to Prompts **and** Resources | dev-platform | unify entry-point group |
-| P2 | HMAC-JWT envelope w/ expiry & issuer | dev-security | `.env` for secret/key rotation |
+| P2 | **Done** – Plugin discovery extended to Prompts & Resources | dev-platform | entry-point groups `ape_prompts.dirs`, `ape_resources.adapters` |
+| P2 | **Done** – Extract public library API (clean `ape` facade) | dev-platform | re-export Agent, MCPClient; lazy CLI deps |
 | P3 | Embeddings & FAISS memory index | dev-ml | start with MiniLM-L6 or `bge-small` |
 | P3 | Expose `memory://search?q=` Resource | dev-ml | read-only, returns top-k snippets |
 | P3 | Memory append tool `memory_append` | dev-ml | agent can write memories to RAG store |
@@ -47,6 +48,7 @@
 | P3 | `VectorMemory` + FAISS/Chroma backend | dev-ml | long-term semantic recall |
 | P4 | Plugin marketplace scaffold | dev-platform | docs + entry-point registry for community |
 | P4 | Distributed agent federation PoC | dev-research | remote MCP peer discovery & trust |
+| P3 | Energy-aware adaptive inference (model-size / device selection) | dev-ml | minimise energy & cost; dynamic model routing |
 
 ## 3. Milestones
 1. **Completed**

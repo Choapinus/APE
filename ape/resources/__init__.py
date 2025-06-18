@@ -18,6 +18,7 @@ from typing import Dict, List, Tuple, Callable, Awaitable
 import importlib
 from pathlib import Path
 import re
+from importlib.metadata import entry_points  # NEW
 
 REGISTRY: Dict[str, "ResourceAdapter"] = {}
 
@@ -74,6 +75,21 @@ def _discover_adapters() -> None:  # noqa: D401 – internal helper
 
 
 _discover_adapters()
+
+# ---------------------------------------------------------------------------
+# 🔌 Plugin adapters via entry-points
+# ---------------------------------------------------------------------------
+
+
+def _discover_entrypoint_adapters() -> None:  # noqa: D401 – internal helper
+    for ep in entry_points(group="ape_resources.adapters"):
+        try:
+            ep.load()  # Import triggers @register side-effects
+        except Exception as exc:  # pragma: no cover
+            print(f"⚠️  [ResourceRegistry] Failed to load adapter plugin '{ep.name}': {exc}")
+
+
+_discover_entrypoint_adapters()
 
 # ---------------------------------------------------------------------------
 # Public helpers

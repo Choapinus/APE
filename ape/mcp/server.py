@@ -68,7 +68,7 @@ def create_mcp_server() -> Server:
                 error_msg = f"Tool '{name}' not found."
                 logger.error(error_msg)
                 envelope = ErrorEnvelope(error=error_msg, tool=name, request=ToolCall(name=name, arguments=arguments))
-                get_session_manager().save_error(name, arguments, error_msg)
+                await get_session_manager().a_save_error(name, arguments, error_msg)
                 return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
             # ------------------------------------------------------------------
@@ -106,7 +106,7 @@ def create_mcp_server() -> Server:
             logger.error(f"💥 [MCP SERVER] Error handling tool {name}: {e}")
             err_text = str(e)
             envelope = ErrorEnvelope(error=err_text, tool=name, request=ToolCall(name=name, arguments=arguments))
-            get_session_manager().save_error(name, arguments, err_text)
+            await get_session_manager().a_save_error(name, arguments, err_text)
             return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
     @server.list_prompts()

@@ -8,6 +8,7 @@ format.  It intentionally mirrors the API outlined in *prompt_dev.md*.
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import os
+from importlib.metadata import entry_points  # NEW
 
 from .loader import load_prompts, PromptTemplate
 
@@ -65,6 +66,27 @@ if os.environ.get("APE_DISABLE_PROMPT_WATCH") != "1":
     import os
 
     _start_watchdog(_PROMPTS_PATH)
+
+# ---------------------------------------------------------------------------
+# 🔌  Plugin integration (entry-points)
+# ---------------------------------------------------------------------------
+
+def register_prompt_directory(path: str | Path) -> None:  # noqa: D401 – public helper
+    """Load all ``*.prompt.md`` files from *path* and merge into registry."""
+
+    try:
+        new_prompts = load_prompts(Path(path))
+        _prompt_cache.update(new_prompts)
+    except Exception as exc:
+        print(f"⚠️  [PromptRegistry] Could not load plugin prompt dir '{path}': {exc}")
+
+# Discover entry-point directories once at import time
+for ep in entry_points(group="ape_prompts.dirs"):
+    try:
+        dir_path = ep.load()  # The object returned should be a str | Path
+        register_prompt_directory(dir_path)
+    except Exception as exc:  # pragma: no cover – best-effort
+        print(f"⚠️  [PromptRegistry] Failed to load prompt plugin '{ep.name}': {exc}")
 
 # ---------------------------------------------------------------------------
 # 🔎 Public helpers

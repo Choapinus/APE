@@ -35,7 +35,7 @@ class ConversationAdapter(ResourceAdapter):
     async def read(self, uri: str, **query) -> Tuple[str, str]:
         if uri == "conversation://sessions":
             sm = get_session_manager()
-            data = sm.get_all_sessions()
+            data = await sm.a_get_all_sessions()
             return "application/json", json.dumps(data, indent=2, default=str)
 
         if uri.startswith("conversation://recent"):
