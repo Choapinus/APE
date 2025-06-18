@@ -17,6 +17,7 @@ from loguru import logger
 
 from .session_manager import get_session_manager
 from ape.settings import settings
+from ape.errors import DatabaseError, ToolExecutionError
 
 # Configuration
 DB_PATH = settings.SESSION_DB_PATH
@@ -86,10 +87,10 @@ async def execute_database_query_impl(sql_query: str) -> str:
             
     except aiosqlite.Error as e:
         logger.error(f"💥 [IMPL] Database error: {e}")
-        return f"Database error: {str(e)}"
+        raise DatabaseError(str(e)) from e
     except Exception as e:
         logger.error(f"💥 [IMPL] Error executing database query: {e}")
-        return f"Error executing database query: {str(e)}"
+        raise ToolExecutionError(str(e)) from e
 
 
 async def get_conversation_history_impl(session_id: str = None, limit: int = 10) -> str:

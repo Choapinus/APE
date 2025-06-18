@@ -237,6 +237,35 @@ class AgentCore:
             {"role": "user", "content": message},
         ]
 
+        # ------------------------------------------------------------------
+        # Sliding window guard – trim oldest messages when token budget exceeded
+        # ------------------------------------------------------------------
+
+        try:
+            from ape.utils import count_tokens  # local import to avoid heavy deps outside use
+
+            ctx_limit = self.context_manager.context_limit if hasattr(self.context_manager, "context_limit") else None
+        except Exception:
+            ctx_limit = None
+
+        # Fallback: attempt to fetch from ChatAgent attribute if available
+        if ctx_limit is None:
+            ctx_limit = getattr(self, "context_limit", None)
+
+        if ctx_limit:
+            margin = settings.CONTEXT_MARGIN_TOKENS
+            total = sum(count_tokens(m["content"]) for m in exec_conversation)
+            if total > ctx_limit - margin:
+                # remove oldest assistant/user pairs until within budget
+                # skip first element (system prompt)
+                pruned_conv = exec_conversation[1:-1]  # messages between system and user message
+                # pop from start until fits
+                while pruned_conv and total > ctx_limit - margin:
+                    removed = pruned_conv.pop(0)
+                    total -= count_tokens(removed["content"])
+                exec_conversation = [exec_conversation[0], *pruned_conv, exec_conversation[-1]]
+        # ------------------------------------------------------------------
+
         try:
             tools_tokens = count_tokens(json.dumps(capabilities["tools"]))
         except Exception:

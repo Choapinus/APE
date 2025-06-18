@@ -7,17 +7,22 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 ## ✨ Features
 
 - 🔗 **MCP Protocol Compliance**: Built with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-- 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) conversation storage and retrieval
-- 🛠️ **9 Powerful Tools**: Database queries, resource access, conversation search, history management
+- 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) storage with **connection pooling**
+- 🛠️ **9+ Tools**: Database queries, resource access, conversation search, history management, error inspection and more (auto-discovered)
 - 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
 - 🧮 **Token Budget Tracking**: Live token counting with context-window warnings based on the active Ollama model
-- 🔒 **HMAC-Signed Tool Results**: Every tool response is verified end-to-end for tamper resistance
+- 🔒 **HS256-Signed JWT Results**: Each tool response is wrapped in a tamper-proof JWT (`MCP_JWT_KEY`, legacy `MCP_HMAC_KEY`)
 - 🔌 **Plugin System**: Extend functionality via `ape_mcp.tools` entry-points — zero-code changes required
 - ⚙️ **pydantic-settings Configuration**: Type-safe settings that can be overridden via a simple `.env` file
 - 🎯 **CLI Interface**: Rich command-line experience with real-time tool feedback
 - 🔍 **Conversation Search**: Full-text search across conversation history
 - 📈 **Session Analytics**: Detailed session statistics and interaction tracking
 - 📚 **Resource Registry**: Browse conversations & DB schema via URIs (`conversation://`, `schema://`) exposed over MCP
+- 🧩 **Extensible Plugins**: Prompts & resource adapters discoverable via entry-points (`ape_prompts.dirs`, `ape_resources.adapters`)
+- ⚡ **Lazy Imports**: Heavy dependencies (Pillow, transformers, ollama) load only when actually needed
+- 📚 **Import-Light API**: `import ape; agent = ape.Agent(...)` – CLI extras no longer pulled in automatically
+- 🛡️ **Structured Error Bus**: `tool_errors` table + `/errors` CLI (surfacing soon)
+- 🤝 **Agent-to-Agent (A2A) Delegation**: `call_agent` tool planned for sub-task spawning
 
 ## 🚀 Quick Start
 
@@ -72,11 +77,20 @@ ollama pull qwen3:8b
 git clone <your-repo-url>
 cd ape
 
-# Install dependencies
-pip install -r requirements.txt
+# Install core library (minimal runtime deps)
+pip install .
 
-# Or for development
-pip install -e .
+# Optional extras
+#   llm     → ollama + transformers
+#   images  → Pillow for image manipulation
+#   cli     → prompt_toolkit for fancy input
+#   dev     → testing & formatting tools
+
+# Example: full interactive install
+pip install ".[llm,images,cli]"
+
+# Development setup
+pip install -e .[dev,llm,cli]
 ```
 
 ### Running APE
@@ -113,21 +127,20 @@ ape/
 ├── ape/                          # Core package
 │   ├── settings.py               # Configuration settings
 │   ├── session.py                # Session management
-│   ├── utils.py                  # Utility functions
-│   ├── sessions.db               # SQLite database
-│   └── mcp/                      # MCP implementation
-│       ├── server.py             # MCP server with tool definitions
-│       ├── implementations.py    # Tool implementation functions
-│       └── session_manager.py    # Session management bridge
-├── cli_chat.py                   # Main CLI interface (primary entry point)
-├── mcp_server.py                 # MCP server entry point
-├── tests/                        # Test suite
-│   ├── unit/                     # Unit tests
-│   └── integration/              # Integration tests
-├── requirements.txt              # Python dependencies
-├── docs/                         # Markdown documentation & guides
-├── findings/                     # Design reviews and technical notes
-└── logs/                         # Application logs
+│   ├── db_pool.py               # aiosqlite connection pool
+│   ├── mcp/                      # MCP implementation
+│   │   ├── server.py             # MCP server with tool definitions
+│   │   ├── implementations.py    # Tool implementation functions
+│   │   └── session_manager.py   # Async Session management
+│   ├── cli_chat.py                   # Main CLI interface (primary entry point)
+│   ├── mcp_server.py                 # MCP server entry point
+│   ├── tests/                        # Test suite
+│   │   ├── unit/                     # Unit tests
+│   │   └── integration/              # Integration tests
+│   ├── requirements.txt              # Python dependencies
+│   ├── docs/                         # Markdown documentation & guides
+│   ├── findings/                     # Design reviews and technical notes
+│   └── logs/                         # Application logs
 ```
 
 ### Core Components
@@ -144,10 +157,10 @@ ape/
 - **Resource and prompt management** capabilities
 - **Proper error handling** and logging
 
-#### **Session Management** (`ape/session.py`)
-- **Asynchronous SQLite (aiosqlite) persistence** with structured schema
+#### **Session Management** (`ape/mcp/session_manager.py`)
+- **Asynchronous SQLite (aiosqlite) persistence** via connection pool (`db_pool.py`)
 - **JSON serialization** for complex data types
-- **Thread-safe operations** with transaction support
+- **Concurrent-safe operations** with WAL mode
 
 ## 🛠️ MCP Tools & Capabilities
 
@@ -195,7 +208,7 @@ TEMPERATURE = 0.5                # Sampling temperature
 MAX_TOOLS_ITERATIONS = 15        # Max reasoning/tool loops per prompt
 UI_THEME = "dark"                # CLI theme (dark/light)
 SHOW_THOUGHTS = True             # Stream <think> content from the LLM
-MCP_HMAC_KEY = "dev-secret"      # Shared secret for tool-result signatures
+MCP_JWT_KEY = "dev-secret"      # Shared secret for tool-result signatures
 SESSION_DB_PATH = "ape/sessions.db"  # SQLite conversation store
 ```
 
@@ -207,7 +220,7 @@ LLM_MODEL=qwen3:14b               # Use a larger model
 TEMPERATURE=0.3                   # More deterministic output
 LOG_LEVEL=INFO                    # Quieter logs
 UI_THEME=light                    # Switch CLI theme
-MCP_HMAC_KEY=$(openssl rand -hex 16)  # Strong key for production
+MCP_JWT_KEY=$(openssl rand -hex 16)  # Strong key for production
 MAX_TOOLS_ITERATIONS=20           # Allow deeper reasoning chains
 ```
 
@@ -319,15 +332,51 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ```mermaid
 graph TD
-  CLI["cli_chat.py (UI shell)"] --> ChatAgent
-  ChatAgent -->|"OLLAMA LLM"| Ollama[("Ollama Server")]
+  subgraph UI
+    CLI["cli_chat.py"]
+  end
+  subgraph Agent
+    ChatAgent
+    ContextManager
+    TokenCounter
+    RateLimiter["Rate Limiter"]
+  end
+  CLI --> ChatAgent
+  ChatAgent --> ContextManager
+  ContextManager --> TokenCounter
+  ContextManager --> RateLimiter
+  ChatAgent -->|"LLM"| Ollama[("Ollama Server")]
+
+  subgraph MCP
+    MCPClient
+    MCPServer
+  end
   ChatAgent -->|"tool_calls"| MCPClient
-  MCPClient -->|"stdio / JSON-RPC"| MCPServer["MCP Server"]
-  MCPServer -->|"discover()"| PluginRegistry["Plugin Registry"]
-  PluginRegistry --> Builtins["Builtin Tools @tool"]
-  PluginRegistry --> Plugins["External Plugins (entry-points)"]
-  MCPServer --> SessionManager
-  SessionManager --> SQLite[("SQLite sessions.db")]
+  MCPClient -->|"JSON-RPC"| MCPServer
+
+  subgraph Server
+    MCPServer --> ToolRegistry
+    MCPServer --> PromptRegistry
+    MCPServer --> ResourceRegistry
+    ToolRegistry --> BuiltinTools["Builtin Tools"]
+    ToolRegistry --> ExternalPlugins["External Plugins"]
+    ToolRegistry --> SummarizeTool["summarize_session Tool"]
+    PromptRegistry --> PromptRepo["Prompt Files (.prompt)"]
+    PromptRegistry --> PromptPlugins["Entry-Point Prompts"]
+    ResourceRegistry --> ResourceAdapters["Resource Adapters"]
+    ResourceRegistry --> ResourcePlugins["Entry-Point Adapters"]
+    ResourceRegistry --> MemoryResource["Memory Resource"]
+    ResourceRegistry --> ErrorResource["ErrorLog Resource"]
+    MCPServer --> SessionManager
+    SessionManager -->|"async"| DBPool["aSQLite Pool"]
+    DBPool --> SQLiteDB[("sessions.db")]
+  end
+
+  subgraph Memory["Memory Layer"]
+    EmbeddingIndex[("FAISS / Chroma Index")]
+  end
+  ContextManager --> EmbeddingIndex
+  MemoryResource --> EmbeddingIndex
 ```
 
 ### Current Status (June 2025)
@@ -360,8 +409,8 @@ pip install -r requirements.txt
 # 4. ensure an Ollama model is pulled (example)
 ollama pull qwen3:8b
 
-# 5. export a NON-default HMAC key (prod)
-export MCP_HMAC_KEY=$(openssl rand -hex 16)
+# 5. export a strong shared secret for JWT signing (prod)
+export MCP_JWT_KEY=$(openssl rand -hex 16)
 
 # 6. launch chat
 python cli_chat.py
@@ -379,9 +428,9 @@ OLLAMA_BASE_URL=http://localhost:11434
 LLM_MODEL=qwen3:14b
 TEMPERATURE=0.3
 MAX_TOOLS_ITERATIONS=20
-MCP_HMAC_KEY=changeme-super-secret
+MCP_JWT_KEY=changeme-super-secret
 ```
 
 Run `python - <<'PY'
-from ape.settings import settings, Settings; print(settings.model_dump_json(indent=2))
-PY` to see the final merged configuration at runtime.
+from ape.settings import settings; print(settings.model_dump_json(indent=2))
+PY` to view the final merged configuration at runtime.

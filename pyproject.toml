@@ -1,0 +1,48 @@
+[project]
+name = "ape-mcp"
+version = "0.1.0"
+description = "Agentic Protocol Executor – MCP-compliant conversational AI agent."
+authors = [
+  { name="APE Dev Team", email="dev@example.com" }
+]
+requires-python = "~=3.11"
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["MCP", "LLM", "agent", "Ollama"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/ape"
+Documentation = "https://github.com/your-org/ape/tree/main/docs"
+
+[project.dependencies]
+loguru = ">=0.7.0"
+aiosqlite = ">=0.19.0"
+pydantic = ">=2.0.0"
+pydantic-settings = ">=2.1.0"
+httpx = ">=0.24.0"
+jinja2 = ">=3.1.3"
+watchdog = ">=4.0.0"
+PyJWT = ">=2.8.0"
+
+[project.optional-dependencies]
+llm = [
+  "ollama>=0.3.0",
+  "transformers>=4.42.0",
+]
+images = [
+  "pillow>=10.0.0"
+]
+dev = [
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.21.0",
+  "black>=23.0.0",
+  "mypy>=1.0.0",
+  "pip-tools>=7.3.0",
+]
+cli = [
+  "prompt_toolkit>=3.0"
+]
+
+[build-system]
+requires = ["setuptools>=67.0", "wheel"]
+build-backend = "setuptools.build_meta" 

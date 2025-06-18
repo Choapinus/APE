@@ -67,5 +67,7 @@ class Settings(BaseSettings):
                 )
         return self
 
+    CONTEXT_MARGIN_TOKENS: int = Field(1024, description="Safety buffer deducted from model context length before pruning")
+
 
 settings = Settings() 

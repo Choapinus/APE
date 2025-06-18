@@ -13,6 +13,7 @@ import json
 import os
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import importlib
 
 from loguru import logger
 import ollama
@@ -23,6 +24,7 @@ from ape.cli.context_manager import ContextManager
 from ape.cli.mcp_client import MCPClient
 from ape.cli.chat_agent import ChatAgent
 from ape.settings import settings
+from ape.db_pool import get_pool
 
 # Better CLI input handling (arrow keys, history)
 try:
@@ -323,6 +325,7 @@ class APEChatCLI:
                 {"role": "user", "content": message}
             ]
             
+            ollama = importlib.import_module("ollama")
             client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
             
             while current_iteration < max_iterations:
@@ -683,6 +686,21 @@ The agent will use its natural reasoning to break down complex tasks!
         
         finally:
             await self.disconnect_from_mcp()
+            # ------------------------------------------------------------------
+            # Ensure all background resources (e.g. aiosqlite worker threads)
+            # are cleaned up so the interpreter can exit without requiring
+            # a manual Ctrl+C.
+            # ------------------------------------------------------------------
+            try:
+                pool = get_pool()
+                await pool.close()
+                logger.info("🗃️  [DB POOL] All database connections closed")
+            except Exception as exc:
+                logger.warning(f"[DB POOL] Error during shutdown: {exc}")
+
+            # Explicitly terminate the process to avoid lingering non-daemon threads
+            # (e.g. those spawned by aiosqlite) keeping Python alive.
+            sys.exit(0)
 
 
 async def main():
@@ -695,6 +713,7 @@ async def main():
     
     # Check if Ollama is available
     try:
+        ollama = importlib.import_module("ollama")
         client = ollama.Client(host=str(settings.OLLAMA_BASE_URL))
         models = client.list()
         if not models.get('models'):

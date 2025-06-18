@@ -1,16 +1,16 @@
 # 🛠️ Enhanced Development Plan for APE
-# Generated: 2025-06-17
+# Generated: 2025-06-18
 
 ## 1. Key Findings
 1. The MCP integration is solid, but
    - ~~Request/response payloads use ad-hoc dicts (risk of schema drift).~~ ✅ Replaced with *Pydantic* `ToolCall` / `ToolResult` / `ErrorEnvelope` models.
    - Errors from tool calls are not persisted in a structured way.
-   - Token counting currently requires a second Ollama call.
-   - Context-window trimming is manual / size-blind.
+   - ~~Token counting currently requires a second Ollama call.~~ ✅ Local `TokenCounter` avoids extra Ollama request.
+   - ~~Context-window trimming is manual / size-blind.~~ ✅ Sliding context-window guard implemented.
    - No structured short-term (sliding) or long-term (vector) memory abstraction exists; makes scaling to multi-turn sessions brittle.
    - No embeddings or RAG memory yet; retrieval would boost long-term reasoning.
-   - Prompts & Resources are not yet exposed via MCP endpoints.
-   - Plugin discovery only covers Tools, not Prompts/Resources.
+   - ~~Prompts & Resources are not yet exposed via MCP endpoints.~~ ✅ Exposed via `list_prompts` / `list_resources` MCP endpoints.
+   - ~~Plugin discovery only covers Tools, not Prompts/Resources.~~ ✅ Unified plugin discovery now covers all three.
    - HMAC signing is present, but key handling & expiry could be improved.
    - Current persistence layer is SQLite; scalable document store options (Mongo/Postgres-JSONB) under consideration.
 
@@ -24,14 +24,17 @@
 | P0 | **Done** – Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | Exposed via `conversation://` & `schema://` URIs |
 | P0 | **Done** – read_resource wrapper tool (bridge Resources → Tools) | dev-backend | allows LLM to fetch any registry resource |
 | P0 | **NEW** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
-| P1 | 🔄 **Planned** – Sliding context-window logic based on live token count | dev-agent | automatic trimming pending resource layer |
+| P0 | **Done** – Sliding context-window guard (token budget) | dev-agent | integrated into `AgentCore`; automatic trimming active |
+| P0 | **Planned** – `/errors` CLI command (inspect Error Bus) | dev-backend | surfaces structured tool errors |
 | P1 | **Planned** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | requires `summarize_text` tool |
 | P1 | Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | foundation for automated context trimming |
 | P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
-| P1 | Central error bus + DB persistence | dev-backend | new table `tool_errors` |
+| P1 | **Planned** – Implement `call_agent` (A2A) tool with depth guard | dev-backend | spawns peer agent for sub-tasks |
 | P2 | Extend plugin discovery to Prompts **and** Resources | dev-platform | unify entry-point group |
 | P2 | **Done** – Plugin discovery extended to Prompts & Resources | dev-platform | entry-point groups `ape_prompts.dirs`, `ape_resources.adapters` |
 | P2 | **Done** – Extract public library API (clean `ape` facade) | dev-platform | re-export Agent, MCPClient; lazy CLI deps |
+| P2 | **NEW** – `pyproject.toml` with optional extras (`llm`, `images`, `dev`) | dev-platform | consolidate dependency metadata |
+| P2 | **NEW** – Freeze dependencies via `pip-tools` / `poetry lock` | dev-platform | reproducible builds |
 | P3 | Embeddings & FAISS memory index | dev-ml | start with MiniLM-L6 or `bge-small` |
 | P3 | Expose `memory://search?q=` Resource | dev-ml | read-only, returns top-k snippets |
 | P3 | Memory append tool `memory_append` | dev-ml | agent can write memories to RAG store |
@@ -58,7 +61,7 @@
    - ✅ Resource Registry implemented (`conversation://*`, `schema://*`).
    - ⏳ Next: Error Bus resource, unified discovery.
 3. **M2 – Context Intelligence**
-   - Sliding window + hybrid summarisation.  
+   - ✅ Sliding window guard completed; next: hybrid summarisation.
    - `summarize_text` tool & WindowMemory.
 4. **M3 – Memory-Augmented Agent (Vector)**
    - Embedding store, RAG resource, improved recall.

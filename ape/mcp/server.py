@@ -24,6 +24,7 @@ from ape.resources import list_resources as _list_resources, read_resource as _r
 from ape.settings import settings  # local import to avoid circular deps
 
 import jwt  # PyJWT
+from ape.errors import ApeError  # local import
 
 
 def create_mcp_server() -> Server:
@@ -104,9 +105,14 @@ def create_mcp_server() -> Server:
 
         except Exception as e:
             logger.error(f"💥 [MCP SERVER] Error handling tool {name}: {e}")
-            err_text = str(e)
-            envelope = ErrorEnvelope(error=err_text, tool=name, request=ToolCall(name=name, arguments=arguments))
-            await get_session_manager().a_save_error(name, arguments, err_text)
+
+            if isinstance(e, ApeError):
+                err_payload = e.to_dict()
+            else:
+                err_payload = {"status": "error", "code": "UNHANDLED_EXCEPTION", "message": str(e)}
+
+            envelope = ErrorEnvelope(error=json.dumps(err_payload), tool=name, request=ToolCall(name=name, arguments=arguments))
+            await get_session_manager().a_save_error(name, arguments, err_payload.get("message", str(e)))
             return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
     @server.list_prompts()

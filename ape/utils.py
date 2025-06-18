@@ -3,7 +3,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING
 from loguru import logger
 from functools import lru_cache
-import os
+from ape.logging import setup_logger  # re-export central function
 
 if TYPE_CHECKING:  # pragma: no cover – typing only
     from PIL import Image  # noqa: F401
@@ -30,18 +30,6 @@ def encode_image_base64(image: "Image.Image") -> str:
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode()
-
-def setup_logger():
-    # Ensure log directory exists
-    os.makedirs("logs", exist_ok=True)
-
-    # Regular application log (INFO+)
-    logger.add("logs/app.log", rotation="1 MB", retention="10 days", level="INFO")
-
-    # Verbose debugging log – captures everything including token usage stats
-    logger.add("logs/debug.log", rotation="10 MB", retention="10 days", level="DEBUG")
-
-    logger.info("Logger initialized with INFO and DEBUG sinks.")
 
 @lru_cache(maxsize=8)
 def _get_tokenizer(model_name: str = "Qwen/Qwen3-8B"):
