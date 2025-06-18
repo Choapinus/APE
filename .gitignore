@@ -131,3 +131,4 @@ Thumbs.db
 
 _logs/
 logs/
+.env
