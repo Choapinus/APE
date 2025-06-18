@@ -10,7 +10,7 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 - 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) storage with **connection pooling**
 - 🛠️ **9+ Tools**: Database queries, resource access, conversation search, history management, error inspection and more (auto-discovered)
 - 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
-- 🧮 **Token Budget Tracking**: Live token counting with context-window warnings based on the active Ollama model
+- 🧮 **Token & Generation Controls**: Live token budgeting plus configurable temperature / top-p / top-k
 - 🔒 **HS256-Signed JWT Results**: Each tool response is wrapped in a tamper-proof JWT (`MCP_JWT_KEY`, legacy `MCP_HMAC_KEY`)
 - 🔌 **Plugin System**: Extend functionality via `ape_mcp.tools` entry-points — zero-code changes required
 - ⚙️ **pydantic-settings Configuration**: Type-safe settings that can be overridden via a simple `.env` file
@@ -206,6 +206,8 @@ OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL
 LLM_MODEL = "qwen3:8b"           # Default model pulled via Ollama
 TEMPERATURE = 0.5                # Sampling temperature
 MAX_TOOLS_ITERATIONS = 15        # Max reasoning/tool loops per prompt
+TOP_P = 0.9                      # Nucleus sampling (probability mass)
+TOP_K = 40                       # Top-K sampling (candidate pool)
 UI_THEME = "dark"                # CLI theme (dark/light)
 SHOW_THOUGHTS = True             # Stream <think> content from the LLM
 MCP_JWT_KEY = "dev-secret"      # Shared secret for tool-result signatures
@@ -217,11 +219,11 @@ SESSION_DB_PATH = "ape/sessions.db"  # SQLite conversation store
 ```bash
 # Example .env / shell overrides
 LLM_MODEL=qwen3:14b               # Use a larger model
-TEMPERATURE=0.3                   # More deterministic output
-LOG_LEVEL=INFO                    # Quieter logs
-UI_THEME=light                    # Switch CLI theme
+TEMPERATURE=0.3
+TOP_P=0.95
+TOP_K=50
+MAX_TOOLS_ITERATIONS=20
 MCP_JWT_KEY=$(openssl rand -hex 16)  # Strong key for production
-MAX_TOOLS_ITERATIONS=20           # Allow deeper reasoning chains
 ```
 
 ### Supported LLM Models
@@ -427,6 +429,8 @@ LOG_LEVEL=INFO
 OLLAMA_BASE_URL=http://localhost:11434
 LLM_MODEL=qwen3:14b
 TEMPERATURE=0.3
+TOP_P=0.95
+TOP_K=50
 MAX_TOOLS_ITERATIONS=20
 MCP_JWT_KEY=changeme-super-secret
 ```

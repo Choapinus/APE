@@ -286,7 +286,9 @@ class AgentCore:
                 model=settings.LLM_MODEL,
                 messages=exec_conversation,
                 tools=capabilities["tools"],
-                options={"temperature": settings.TEMPERATURE},
+                options={"temperature": settings.TEMPERATURE,
+                         "top_p": settings.TOP_P,
+                         "top_k": settings.TOP_K},
                 stream=True,
             )
 
