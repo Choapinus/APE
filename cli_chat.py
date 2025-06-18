@@ -73,6 +73,7 @@ class APEChatCLI:
         print("  /quit     - Exit chat")
         print("  /exit     - Exit chat")
         print("  /q        - Exit chat")
+        print("  /errors   - Show recent tool errors")
         print("\n🧠 Intelligence: Connected to MCP server with tools:")
         print("  • Database tools for conversation management")
         print("  • Search tools for finding content")
@@ -581,6 +582,7 @@ Available commands:
   /quit     - Exit chat
   /exit     - Exit chat
   /q        - Exit chat
+  /errors   - Show recent tool errors
 
 🚀 Enhanced Autonomous Capabilities:
 The agent can now handle complex multi-step tasks naturally by:
@@ -606,6 +608,30 @@ The agent will use its natural reasoning to break down complex tasks!
         print("="*60)
         print(context_summary)
         print("="*60)
+    
+    async def show_errors(self, limit: int = 20):
+        """Display recent structured tool errors from the Error Bus."""
+        try:
+            sm = get_session_manager()
+            errors = await sm.a_get_recent_errors(limit, session_id=self.session_id)
+
+            if not errors:
+                print("\n✅ No tool errors recorded.")
+                return
+
+            print(f"\n🚨 Last {len(errors)} tool error(s) for this session:")
+            print("-" * 60)
+            for err in errors:
+                tool = err.get("tool")
+                ts = str(err.get("timestamp"))[:19]
+                msg = err.get("error", "")
+                args_preview = json.dumps(err.get("arguments", {}))[:80]
+                print(f"[{ts}] {tool}  args={args_preview}\n   → {msg}\n")
+            print("-" * 60)
+
+        except Exception as exc:
+            logger.error(f"Error fetching tool errors: {exc}")
+            print(f"❌ Error fetching tool errors: {exc}")
     
     async def run(self):
         """Main chat loop."""
@@ -646,6 +672,8 @@ The agent will use its natural reasoning to break down complex tasks!
                             await self.show_context()
                         elif user_input == '/reset':
                             self.clear_context()
+                        elif user_input == '/errors':
+                            await self.show_errors()
                         continue
                     
                     # Process regular message

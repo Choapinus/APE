@@ -195,8 +195,22 @@ class AgentCore:
                     payload_text = raw
 
                 text = payload_text if verified else "❌ ERROR: Tool result signature verification failed."
+                # Log signature verification failure as structured error
+                if not verified:
+                    try:
+                        from ape.mcp.session_manager import get_session_manager
+
+                        await get_session_manager().a_save_error(fn, arguments, "Signature verification failed", session_id=self.session_id)
+                    except Exception as log_exc:  # pragma: no cover – logging must not break tool flow
+                        logger.debug(f"Could not persist verification error: {log_exc}")
             except Exception as exc:
                 text = f"ERROR executing tool: {exc}"
+                try:
+                    from ape.mcp.session_manager import get_session_manager
+
+                    await get_session_manager().a_save_error(fn, arguments, str(exc), session_id=self.session_id)
+                except Exception as log_exc:  # pragma: no cover
+                    logger.debug(f"Could not persist tool error: {log_exc}")
 
             results.append({"tool": fn, "arguments": arguments, "result": text})
             self.context_manager.add_tool_result(fn, arguments, text)

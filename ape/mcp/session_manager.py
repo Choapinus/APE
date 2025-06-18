@@ -45,6 +45,7 @@ class SessionManager:
             """
             CREATE TABLE IF NOT EXISTS tool_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
                 tool TEXT NOT NULL,
                 arguments TEXT,
                 error TEXT NOT NULL,
@@ -149,15 +150,16 @@ class SessionManager:
             logger.error(f"[async] Error getting sessions: {exc}")
             return []
 
-    async def a_save_error(self, tool: str, arguments: dict | None, error: str):
+    async def a_save_error(self, tool: str, arguments: dict | None, error: str, session_id: str | None = None):
         """Async version of save_error."""
         try:
             from ape.db_pool import get_db
 
             async with get_db() as conn:
                 await conn.execute(
-                    "INSERT INTO tool_errors (tool, arguments, error) VALUES (?, ?, ?)",
+                    "INSERT INTO tool_errors (session_id, tool, arguments, error) VALUES (?, ?, ?, ?)",
                     (
+                        session_id,
                         tool,
                         json.dumps(arguments or {}),
                         error,
@@ -167,30 +169,56 @@ class SessionManager:
         except Exception as exc:
             logger.error(f"[async] Error saving tool error: {exc}")
 
-    # -------------------- Sync wrappers (deprecated) --------------------
+    # ------------------------------------------------------------------
+    # Error retrieval helpers
+    # ------------------------------------------------------------------
 
-    def get_all_sessions(self) -> List[Dict[str, Any]]:
-        """Deprecated sync wrapper delegating to ``a_get_all_sessions``."""
+    async def a_get_recent_errors(self, limit: int = 20, session_id: str | None = None) -> List[Dict[str, Any]]:
+        """Return recent tool errors. If *session_id* is set, filter by that session."""
+        try:
+            from ape.db_pool import get_db
+
+            async with get_db() as conn:
+                base_q = "SELECT session_id, tool, arguments, error, timestamp FROM tool_errors"
+                if session_id:
+                    base_q += " WHERE session_id = ?"
+                base_q += " ORDER BY timestamp DESC LIMIT ?"
+
+                params = (session_id, limit) if session_id else (limit,)
+
+                async with conn.execute(base_q, params) as cursor:
+                    rows = await cursor.fetchall()
+
+            errors: List[Dict[str, Any]] = []
+            for sess, tool, arguments, error_msg, ts in rows:
+                try:
+                    args_json = json.loads(arguments) if arguments else {}
+                except Exception:
+                    args_json = arguments or {}
+                errors.append(
+                    {
+                        "session_id": sess,
+                        "tool": tool,
+                        "arguments": args_json,
+                        "error": error_msg,
+                        "timestamp": ts,
+                    }
+                )
+            return errors
+        except Exception as exc:
+            logger.error(f"[async] Error retrieving recent tool errors: {exc}")
+            return []
+
+    def get_recent_errors(self, limit: int = 20, session_id: str | None = None) -> List[Dict[str, Any]]:
+        """Sync wrapper."""
         import asyncio
 
         try:
-            return asyncio.run(self.a_get_all_sessions())
+            return asyncio.run(self.a_get_recent_errors(limit, session_id=session_id))
         except RuntimeError:
-            # Already inside an event loop → fallback to blocking call with nested loop
             loop = asyncio.get_event_loop()
-            fut = asyncio.ensure_future(self.a_get_all_sessions(), loop=loop)
+            fut = asyncio.ensure_future(self.a_get_recent_errors(limit, session_id=session_id), loop=loop)
             return loop.run_until_complete(fut)
-
-    def save_error(self, tool: str, arguments: dict | None, error: str):
-        """Deprecated sync wrapper delegating to ``a_save_error``."""
-        import asyncio
-
-        try:
-            asyncio.run(self.a_save_error(tool, arguments, error))
-        except RuntimeError:
-            loop = asyncio.get_event_loop()
-            fut = asyncio.ensure_future(self.a_save_error(tool, arguments, error), loop=loop)
-            loop.run_until_complete(fut)
 
     # ------------------------------------------------------------------
     # Async variants (Step 1 – aiosqlite migration)
@@ -256,6 +284,30 @@ class SessionManager:
         except Exception as exc:
             logger.error(f"[async] Error getting history: {exc}")
             return []
+
+    # -------------------- Sync wrappers (deprecated) --------------------
+
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        """Deprecated synchronous wrapper delegating to :py:meth:`a_get_all_sessions`."""
+        import asyncio
+
+        try:
+            return asyncio.run(self.a_get_all_sessions())
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+            fut = asyncio.ensure_future(self.a_get_all_sessions(), loop=loop)
+            return loop.run_until_complete(fut)
+
+    def save_error(self, tool: str, arguments: dict | None, error: str, session_id: str | None = None):
+        """Deprecated synchronous wrapper delegating to :py:meth:`a_save_error`."""
+        import asyncio
+
+        try:
+            asyncio.run(self.a_save_error(tool, arguments, error, session_id=session_id))
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+            fut = asyncio.ensure_future(self.a_save_error(tool, arguments, error, session_id=session_id), loop=loop)
+            loop.run_until_complete(fut)
 
 
 # Global session manager instance

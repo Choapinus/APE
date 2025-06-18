@@ -24,7 +24,6 @@ execute_query_schema = {
     "type": "object",
     "properties": {
         "sql_query": {"type": "string", "description": "SQL query to execute"},
-        "query": {"type": "string", "description": "Alias for sql_query"},
     },
     "required": ["sql_query"],
 }

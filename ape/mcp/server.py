@@ -69,7 +69,7 @@ def create_mcp_server() -> Server:
                 error_msg = f"Tool '{name}' not found."
                 logger.error(error_msg)
                 envelope = ErrorEnvelope(error=error_msg, tool=name, request=ToolCall(name=name, arguments=arguments))
-                await get_session_manager().a_save_error(name, arguments, error_msg)
+                await get_session_manager().a_save_error(name, arguments, error_msg, session_id=arguments.get("session_id"))
                 return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
             # ------------------------------------------------------------------
@@ -112,7 +112,7 @@ def create_mcp_server() -> Server:
                 err_payload = {"status": "error", "code": "UNHANDLED_EXCEPTION", "message": str(e)}
 
             envelope = ErrorEnvelope(error=json.dumps(err_payload), tool=name, request=ToolCall(name=name, arguments=arguments))
-            await get_session_manager().a_save_error(name, arguments, err_payload.get("message", str(e)))
+            await get_session_manager().a_save_error(name, arguments, err_payload.get("message", str(e)), session_id=arguments.get("session_id"))
             return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
     @server.list_prompts()

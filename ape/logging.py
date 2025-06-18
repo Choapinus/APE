@@ -10,15 +10,26 @@ from typing import Literal
 
 from loguru import logger
 
+from ape.settings import settings
+
 _INITIALISED = False
 
 
-def setup_logger(level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG") -> None:
-    """Configure Loguru sinks once per process."""
+def setup_logger(
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None
+) -> None:
+    """Configure Loguru sinks once per process.
+
+    If *level* is *None* the value of ``settings.LOG_LEVEL`` is used.  The
+    function is idempotent – subsequent calls are ignored.
+    """
 
     global _INITIALISED
     if _INITIALISED:
         return
+
+    if level is None:
+        level = settings.LOG_LEVEL.upper()  # type: ignore[assignment]
 
     Path("logs").mkdir(exist_ok=True)
 
@@ -27,7 +38,7 @@ def setup_logger(level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     logger.add("logs/app.log", level="INFO", rotation="1 MB", retention="10 days")
     logger.add("logs/debug.log", level="DEBUG", rotation="1 MB", retention="10 days")
 
-    # also pretty-print to stderr at requested level
+    # pretty-print to stderr at the chosen level
     logger.add(lambda msg: print(msg, end=""), level=level)
 
     logger.level(level)

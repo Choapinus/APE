@@ -23,9 +23,8 @@
 | P0 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
 | P0 | **Done** – Resource registry + MCP handlers (`list_resources`, `read_resource`) | dev-backend | Exposed via `conversation://` & `schema://` URIs |
 | P0 | **Done** – read_resource wrapper tool (bridge Resources → Tools) | dev-backend | allows LLM to fetch any registry resource |
-| P0 | **NEW** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
-| P0 | **Done** – Sliding context-window guard (token budget) | dev-agent | integrated into `AgentCore`; automatic trimming active |
-| P0 | **Planned** – `/errors` CLI command (inspect Error Bus) | dev-backend | surfaces structured tool errors |
+| P0 | **Done** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
+| P0 | **Done** – `/errors` CLI command (inspect Error Bus) | dev-backend | CLI shows per-session failures |
 | P1 | **Planned** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | requires `summarize_text` tool |
 | P1 | Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | foundation for automated context trimming |
 | P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
@@ -56,10 +55,10 @@
 ## 3. Milestones
 1. **Completed**
    - All chat/database ops are now awaitable; DB layer uses `aiosqlite`.
-2. **M1 – Prompt & Resource Parity (former P0+P2)** *(current)*
+2. **M1 – Prompt & Resource Parity** *(COMPLETE)*
    - ✅ Prompt Registry implemented & served via MCP.  
    - ✅ Resource Registry implemented (`conversation://*`, `schema://*`).
-   - ⏳ Next: Error Bus resource, unified discovery.
+   - ✅ Error Bus resource & `/errors` CLI completed.
 3. **M2 – Context Intelligence**
    - ✅ Sliding window guard completed; next: hybrid summarisation.
    - `summarize_text` tool & WindowMemory.
