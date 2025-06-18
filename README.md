@@ -21,7 +21,8 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 - 🧩 **Extensible Plugins**: Prompts & resource adapters discoverable via entry-points (`ape_prompts.dirs`, `ape_resources.adapters`)
 - ⚡ **Lazy Imports**: Heavy dependencies (Pillow, transformers, ollama) load only when actually needed
 - 📚 **Import-Light API**: `import ape; agent = ape.Agent(...)` – CLI extras no longer pulled in automatically
-- 🛡️ **Structured Error Bus**: `tool_errors` table + `/errors` CLI (surfacing soon)
+- 🛡️ **Structured Error Bus**: `tool_errors` table + `errors://recent` resource
+- 🚨 **/errors Command**: Inspect per-session tool failures straight from the CLI
 - 🤝 **Agent-to-Agent (A2A) Delegation**: `call_agent` tool planned for sub-task spawning
 
 ## 🚀 Quick Start
@@ -107,7 +108,7 @@ python cli_chat.py
 python test_mcp.py
 ```
 
-#### Available CLI Commands
+#### Available CLI Commands  *(stop pretending you didn't need a crib sheet)*
 
 Once in the chat interface:
 
@@ -116,6 +117,7 @@ Once in the chat interface:
 - `/session` - Show current session information
 - `/tools` - List available MCP tools
 - `/context` - Display current session context
+- `/errors`  - Show recent **per-session** tool errors (no cross-agent noise)
 - `/clear` - Clear screen
 - `/reset` - Reset session context
 - `/quit` - Exit the application
@@ -201,7 +203,7 @@ APE relies on `pydantic-settings`; every field below can be overridden with envi
 ```python
 # Defaults as of June 2025
 PORT = 8000                      # MCP server port
-LOG_LEVEL = "DEBUG"              # Verbosity (DEBUG/INFO/WARNING)
+LOG_LEVEL = "INFO"               # Runtime verbosity – DEBUG spam is now confined to logs
 OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL
 LLM_MODEL = "qwen3:8b"           # Default model pulled via Ollama
 TEMPERATURE = 0.5                # Sampling temperature
