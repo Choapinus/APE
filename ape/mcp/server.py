@@ -15,8 +15,8 @@ import mcp.server.stdio
 from loguru import logger
 from ape.utils import setup_logger
 
-from .session_manager import get_session_manager
 from .plugin import discover
+from .session_manager import get_session_manager
 from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 from ape.prompts import list_prompts as _list_prompts, render_prompt
 from ape.resources import list_resources as _list_resources, read_resource as _read_resource

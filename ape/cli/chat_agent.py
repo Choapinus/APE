@@ -35,6 +35,7 @@ class ChatAgent(AgentCore):
         context_manager: ContextManager,
         *,
         agent_name: str = "APE",
+        role_definition: str = "",
     ) -> None:
         """Create a new ChatAgent.
 
@@ -50,25 +51,33 @@ class ChatAgent(AgentCore):
             Human-readable identifier (e.g. "APE-1", "APE-2") used inside the
             system prompt so that multiple agents in the same Python process
             keep their identities separate.
+        role_definition:
+            Role definition for the agent.
         """
+
+        # ------------------------------------------------------------------
+        # Cache Ollama model metadata *before* initialising AgentCore so the
+        # correct context window size is available during WindowMemory setup.
+        # ------------------------------------------------------------------
+        try:
+            self.model_info = get_ollama_model_info(settings.LLM_MODEL)
+            ctx_limit: int | None = self.model_info.get("context_length")  # type: ignore[arg-type]
+        except Exception as exc:
+            logger.warning(f"Could not retrieve model info: {exc}")
+            self.model_info = {}
+            ctx_limit = None
 
         super().__init__(
             session_id=session_id,
             mcp_client=mcp_client,
             context_manager=context_manager,
             agent_name=agent_name,
+            role_definition=role_definition,
+            context_limit=ctx_limit,
         )
 
-        # ------------------------------------------------------------------
-        # Cache Ollama model metadata once per agent instance for efficiency
-        # ------------------------------------------------------------------
-        try:
-            self.model_info = get_ollama_model_info(settings.LLM_MODEL)
-            self.context_limit: int | None = self.model_info.get("context_length")  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.warning(f"Could not retrieve model info: {exc}")
-            self.model_info = {}
-            self.context_limit = None
+        # Store the context limit as attribute too (may be useful elsewhere)
+        self.context_limit = ctx_limit
 
         # Initialise prompt session lazily (optional dependency)
         global PromptSession  # noqa: PLW0603 – assign module-level var

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from loguru import logger
@@ -24,11 +24,31 @@ class AgentCore:
         context_manager,
         *,
         agent_name: str = "APE",
+        role_definition: str = "",
+        context_limit: int | None = None,
     ) -> None:
         self.session_id = session_id
         self.mcp_client = mcp_client
         self.context_manager = context_manager
         self.agent_name = agent_name
+        self.role_definition = role_definition
+
+        # ------------------------------------------------------------------
+        # M2 – Context Intelligence: initialise hybrid window memory
+        # ------------------------------------------------------------------
+        try:
+            from ape.core.memory import WindowMemory  # local import to avoid circular deps
+
+            # Prefer explicit override, fallback to attribute from subclass, then 8192
+            if context_limit is not None:
+                ctx_limit = context_limit
+            else:
+                ctx_limit = getattr(self, "context_limit", 8192)
+
+            self.memory = WindowMemory(ctx_limit=ctx_limit, mcp_client=mcp_client, session_id=session_id)
+        except Exception as exc:  # pragma: no cover – memory must not break agent
+            logger.warning(f"WindowMemory disabled: {exc}")
+            self.memory = None
 
     # ------------------------------------------------------------------
     # The following methods are *verbatim* copies of ChatAgent – kept here so
@@ -38,6 +58,21 @@ class AgentCore:
 
     async def discover_capabilities(self) -> Dict[str, Any]:
         from ape.prompts import list_prompts as _local_list  # local import
+
+        # ------------------------------------------------------------------
+        # Simple per-agent cache with 5-minute TTL to avoid a round-trip on
+        # every turn while still reflecting dynamic tool changes.
+        # ------------------------------------------------------------------
+
+        TTL = timedelta(minutes=5)
+        now = datetime.utcnow()
+
+        if (
+            hasattr(self, "_cached_capabilities")
+            and hasattr(self, "_caps_timestamp")
+            and (now - self._caps_timestamp) < TTL
+        ):
+            return self._cached_capabilities  # type: ignore[attr-defined]
 
         capabilities: Dict[str, Any] = {"tools": [], "prompts": [], "resources": []}
 
@@ -95,6 +130,11 @@ class AgentCore:
             pass
 
         logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
+
+        # Cache result with timestamp
+        self._cached_capabilities = capabilities  # type: ignore[attr-defined]
+        self._caps_timestamp = now  # type: ignore[attr-defined]
+
         return capabilities
 
     async def create_dynamic_system_prompt(self, capabilities: Dict[str, Any]) -> str:
@@ -129,6 +169,9 @@ class AgentCore:
                 "tools_section": tools_section,
                 "prompts_section": prompts_section,
                 "resources_section": resources_section,
+                "role_definition": getattr(self, "role_definition", ""),
+                # Expose WindowMemory summary inside the system prompt (M2)
+                "memory_summary": getattr(self.memory, "latest_context", lambda: "")(),
             },
         )
 
@@ -161,6 +204,23 @@ class AgentCore:
             fn = call["function"]["name"]
             arguments = call["function"]["arguments"]
 
+            # --------------------------------------------------------------
+            # Rate-limiting (per session) – block excessive tool spam
+            # --------------------------------------------------------------
+            try:
+                from ape.core.rate_limiter import allow as _rl_allow
+
+                if not _rl_allow(self.session_id):
+                    results.append({
+                        "tool": fn,
+                        "arguments": arguments,
+                        "result": "RATE_LIMIT_EXCEEDED: Too many tool calls per minute; slow down.",
+                    })
+                    # Skip actual execution for this tool call
+                    continue
+            except Exception as exc:  # pragma: no cover – limiter must not crash tool flow
+                logger.debug(f"Rate-limiter check failed (ignored): {exc}")
+
             # Simple placeholder substitution using the context manager
             if isinstance(arguments, dict):
                 for k, v in list(arguments.items()):
@@ -171,7 +231,8 @@ class AgentCore:
                     ):
                         arguments[k] = self.context_manager.extracted_values["last_session_id"]
 
-            logger.info(f"Executing tool {fn} with args {arguments}")
+            logger.bind(agent=self.agent_name).info(
+                f"Executing tool {fn} with args {arguments}")
             try:
                 res = await self.mcp_client.call_tool(fn, arguments)
                 raw = res.content[0].text if res.content else ""
@@ -179,22 +240,35 @@ class AgentCore:
                 # verify JWT
                 verified = False
                 payload_text = ""
+                verification_error = ""
                 try:
                     env = json.loads(raw)
                     token = env.get("jwt") or env.get("sig") or ""
                     if token:
                         import jwt
-                        decoded = jwt.decode(token, settings.MCP_JWT_KEY, algorithms=["HS256"])
-                        verified = True
-                        payload_text = decoded.get("payload") or json.dumps(decoded, ensure_ascii=False)
+                        try:
+                            decoded = jwt.decode(token, settings.MCP_JWT_KEY, algorithms=["HS256"])
+                            verified = True
+                            payload_text = decoded.get("payload") or json.dumps(decoded, ensure_ascii=False)
+                        except jwt.ExpiredSignatureError as sig_exc:
+                            verification_error = f"Signature expired: {sig_exc}"
+                        except jwt.InvalidTokenError as sig_exc:
+                            verification_error = f"Invalid signature: {sig_exc}"
                     else:
+                        verification_error = "Missing JWT signature in tool result."
                         payload_text = env.get("payload", "") or raw
-                except jwt.ExpiredSignatureError:
-                    payload_text = "❌ ERROR: Tool result signature expired."
-                except Exception:
+                except Exception as exc_inner:
+                    verification_error = f"Malformed tool response: {exc_inner}"
                     payload_text = raw
 
-                text = payload_text if verified else "❌ ERROR: Tool result signature verification failed."
+                if verified:
+                    text = payload_text
+                else:
+                    # If the tool wrapper returned a plain error string (no JWT), surface it.
+                    if payload_text:
+                        text = f"❌ TOOL ERROR: {payload_text.strip()}"
+                    else:
+                        text = f"❌ ERROR: Tool result signature verification failed – {verification_error or 'unknown reason.'}"
                 # Log signature verification failure as structured error
                 if not verified:
                     try:
@@ -240,6 +314,17 @@ class AgentCore:
 
         capabilities = await self.discover_capabilities()
         system_prompt = await self.create_dynamic_system_prompt(capabilities)
+
+        # ------------------------------------------------------------------
+        # Update memory with the incoming *user* message and prune if needed
+        # BEFORE sending the payload to the model so the context stays within
+        # the token budget.
+        # ------------------------------------------------------------------
+        if hasattr(self, "memory") and self.memory:
+            # Add the new user message (conversation list may already contain
+            # older messages which are tracked separately inside memory).
+            self.memory.add({"role": "user", "content": message})
+            await self.memory.prune()
 
         ctx_summary = self.context_manager.get_context_summary()
         if ctx_summary.strip() != "CURRENT SESSION CONTEXT:":
@@ -333,6 +418,11 @@ class AgentCore:
             if not has_tool_calls:
                 if current_chunk:
                     cumulative_resp += current_chunk
+
+                # Store assistant answer in WindowMemory (if enabled)
+                if hasattr(self, "memory") and self.memory:
+                    self.memory.add({"role": "assistant", "content": cumulative_resp})
+
                 break
 
         return cumulative_resp 

@@ -45,7 +45,6 @@ class SessionManager:
             """
             CREATE TABLE IF NOT EXISTS tool_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
                 tool TEXT NOT NULL,
                 arguments TEXT,
                 error TEXT NOT NULL,
@@ -53,6 +52,22 @@ class SessionManager:
             )
         """
         )
+        
+        # ------------------------------------------------------------------
+        # Backward-compatibility migration: older installations created
+        # the *tool_errors* table **without** the session_id column.  The
+        # CREATE TABLE … IF NOT EXISTS above does *not* add missing columns
+        # to an existing table, so we run a lightweight check and apply the
+        # ALTER TABLE only when required.
+        # ------------------------------------------------------------------
+        try:
+            cursor.execute("PRAGMA table_info(tool_errors)")
+            cols = [row[1] for row in cursor.fetchall()]
+            if "session_id" not in cols:
+                cursor.execute("ALTER TABLE tool_errors ADD COLUMN session_id TEXT")
+                logger.debug("[DB] Added missing session_id column to tool_errors table")
+        except Exception as exc:
+            logger.error(f"[DB] Failed to ensure session_id column exists: {exc}")
         
         conn.commit()
         conn.close()
