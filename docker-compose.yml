@@ -1,7 +1,7 @@
 services:
-  # Ollama LLM Server with GPU support
+  # Ollama LLM Server with WSL2/GTX compatibility fixes
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.9.2
     container_name: ape_ollama
     ports:
       - "11434:11434"
@@ -10,16 +10,32 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
-      - LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
+      - OLLAMA_ORIGINS=*
+      - OLLAMA_MODELS=/root/.ollama/models
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_RUNNERS_DIR=/tmp/ollama_runners
+      - OLLAMA_DEBUG=1
+      - CUDA_VISIBLE_DEVICES=1
+      - OLLAMA_GPU_OVERHEAD=4096
+      - OLLAMA_MAX_VRAM=6144
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=false
+      - OLLAMA_USE_MLOCK=false
+      - CUDA_LAUNCH_BLOCKING=1
+      - CUDA_MEMORY_POOL_DISABLED=1
+      - OLLAMA_LOAD_TIMEOUT=600
+      - OLLAMA_REQUEST_TIMEOUT=300
     restart: unless-stopped
-    # GPU support for WSL2 (temporarily disabled for testing)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    deploy:
+       resources:
+         reservations:
+           devices:
+             - driver: nvidia
+               device_ids: ['1']  # Use GTX 1080 Ti (11GB) for better compatibility
+               capabilities: [gpu]
+         limits:
+           memory: 8G  # Limit container memory
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s

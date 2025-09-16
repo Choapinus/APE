@@ -4,10 +4,13 @@ FROM python:3.11-slim-bookworm as base
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including debugging tools
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    gdb \
+    strace \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
