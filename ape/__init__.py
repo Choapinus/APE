@@ -8,7 +8,8 @@ from .utils import count_tokens, get_ollama_model_info  # noqa: F401
 from .core.agent_core import AgentCore as Agent  # noqa: F401
 
 # MCP client wrapper (no prompt_toolkit required)
-from .cli.mcp_client import MCPClient  # noqa: F401
+# Temporarily commenting out to test server refactor
+# from .cli.mcp_client import MCPClient  # noqa: F401
 
 # Prompt helpers
 from .prompts import render_prompt, list_prompts  # noqa: F401
