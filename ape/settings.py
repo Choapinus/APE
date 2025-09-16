@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         description="Shared secret used to sign/verify tool results via JWT (HS256)",
     )
 
+    # NEW: URL for the standalone MCP server
+    MCP_SERVER_URL: HttpUrl = Field(
+        "http://localhost:8000",
+        description="Base URL of the standalone MCP server"
+    )
+
     # Allow legacy env var
     model_config = {
         "env_file": ".env",

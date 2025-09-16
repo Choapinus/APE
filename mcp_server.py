@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-APE MCP Server - Entry Point
+APE MCP Server - HTTP Entry Point
 
-This is the main entry point for the APE (Advanced Prompt Engine) MCP server.
-The server now uses the official MCP Python SDK for proper protocol compliance.
+This script runs the MCP server as a standalone HTTP (ASGI) application using uvicorn.
 """
 
-import asyncio
-from ape.mcp.server import run_server
+import uvicorn
+from ape.mcp.server import app
+from ape.settings import settings
+from ape.utils import setup_logger
 
 if __name__ == "__main__":
-    # Run the MCP server
-    asyncio.run(run_server()) 
+    setup_logger()
+    uvicorn.run(app, host="0.0.0.0", port=settings.PORT) 

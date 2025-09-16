@@ -1,7 +1,7 @@
 # APE MCP Server Dependencies
 
 # Core MCP functionality (Official SDK)
-mcp>=1.0.0
+mcp>=1.14.0
 
 # Database operations
 # sqlite3 is built into Python, no need to install
@@ -43,3 +43,7 @@ pyyaml>=6.0
 
 # JWT signing/verification
 PyJWT>=2.8.0
+
+# Added for FastAPI/Uvicorn (MCP Server HTTP Transport)
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0

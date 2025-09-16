@@ -1,0 +1,17 @@
+.git
+__pycache__/
+.pytest_cache/
+*.pyc
+*.log
+_logs/
+logs/
+*.db
+*.db-shm
+*.db-wal
+*.md
+env.example
+download_ollama_model.sh
+pyproject.toml
+tests/
+findings/
+images/
