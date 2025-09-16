@@ -10,32 +10,17 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_ORIGINS=*
-      - OLLAMA_MODELS=/root/.ollama/models
-      - OLLAMA_KEEP_ALIVE=24h
-      - OLLAMA_RUNNERS_DIR=/tmp/ollama_runners
-      - OLLAMA_DEBUG=1
-      - CUDA_VISIBLE_DEVICES=1
-      - OLLAMA_GPU_OVERHEAD=4096
-      - OLLAMA_MAX_VRAM=6144
-      - OLLAMA_NUM_PARALLEL=1
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_FLASH_ATTENTION=false
-      - OLLAMA_USE_MLOCK=false
-      - CUDA_LAUNCH_BLOCKING=1
-      - CUDA_MEMORY_POOL_DISABLED=1
-      - OLLAMA_LOAD_TIMEOUT=600
-      - OLLAMA_REQUEST_TIMEOUT=300
+      - NVIDIA_VISIBLE_DEVICES=0,1
+      - OLLAMA_GPU_LAYERS=-1
+      - OLLAMA_GPU_MEMORY_FRACTION=0.9
     restart: unless-stopped
     deploy:
-       resources:
-         reservations:
-           devices:
-             - driver: nvidia
-               device_ids: ['1']  # Use GTX 1080 Ti (11GB) for better compatibility
-               capabilities: [gpu]
-         limits:
-           memory: 8G  # Limit container memory
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
