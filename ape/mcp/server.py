@@ -202,5 +202,5 @@ app = FastAPI()
 
 mcp_app = create_mcp_server()
 
-mcp_router = mcp.server.fastapi.create_router(mcp_app)
+mcp_router = mcp.server.fastmcp.create_router(mcp_app)
 app.include_router(mcp_router) 
