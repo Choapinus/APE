@@ -12,6 +12,7 @@ import json
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional
+import re
 
 from loguru import logger
 
@@ -509,4 +510,134 @@ async def list_tables() -> str:
         return ", ".join([row[0] for row in tables]) if tables else "No tables found"
     except Exception as e:
         logger.error(f"Error listing tables: {e}")
-        return "Error listing tables" 
+        return "Error listing tables"
+
+
+# ------------------------------------------------------------------
+# 📄 Text Summarisation
+# ------------------------------------------------------------------
+async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
+    """Return a concise summary of *text*.
+
+    High-level algorithm:
+    1. Enforce a 4 000-token hard limit on *input* for safety.
+    2. Try to get a high-quality TL;DR from the configured Ollama model.
+    3. If the summary is too long, retry once with a more insistent prompt.
+    4. If it's still too long, apply a smarter sentence-based truncation.
+    5. If the Ollama request fails, fall back to a heuristic extractive summary.
+
+    The function remains **self-contained** (no external async helpers) so that
+    unit tests can monkey-patch the Ollama client easily.
+    """
+
+    from ape.utils import count_tokens  # local import to keep globals light
+    from ape.settings import settings
+    import asyncio
+    import re
+    from loguru import logger
+
+    # ------------------------------------------------------------------
+    # 0) Pre-processing – strip private reasoning if disabled by settings
+    # ------------------------------------------------------------------
+
+    if not settings.SUMMARIZE_THOUGHTS:
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+
+    # ------------------------------------------------------------------
+    # 1) Guards – reject oversized inputs early
+    # ------------------------------------------------------------------
+    INPUT_LIMIT = 4000  # tokens
+    if count_tokens(text) > INPUT_LIMIT:
+        return (
+            "SECURITY_ERROR: Input too large for summarize_text tool. "
+            f"Maximum allowed is {INPUT_LIMIT} tokens."
+        )
+
+    # Use centrally defined cap; ignore caller-provided value unless it lowers the cap further (internal calls only)
+    token_cap = settings.SUMMARY_MAX_TOKENS
+
+    # ------------------------------------------------------------------
+    # 2) Attempt intelligent TL;DR via Ollama (with retry)
+    # ------------------------------------------------------------------
+    try:
+        import importlib
+
+        ollama = importlib.import_module("ollama")
+        client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
+        model_name: str = getattr(settings, "SUMMARY_MODEL", settings.LLM_MODEL)
+
+        # --- First attempt ---
+        prompt1 = (
+            f"You are an expert summariser. Provide a concise TL;DR of the following "
+            f"text. It is critical that your response is AT MOST {token_cap} tokens long.\n\n"
+            f"Text to summarize:\n{text.strip()}\n\nTL;DR:"
+        )
+        resp1 = await asyncio.wait_for(
+            client.generate(model=model_name, prompt=prompt1), timeout=30
+        )
+        summary = (resp1.get("response", "") if isinstance(resp1, dict) else str(resp1)).strip()
+
+        # --- Check and Retry if necessary ---
+        if summary and count_tokens(summary) > token_cap:
+            logger.warning(f"summarize_text_impl: First summary attempt was too long ({count_tokens(summary)} > {token_cap}). Retrying...")
+            prompt2 = (
+                f"Your previous summary was too long. Make it even more concise. "
+                f"The summary MUST be under {token_cap} tokens.\n\n"
+                f"Previous summary to shorten:\n{summary}\n\nConcise TL;DR:"
+            )
+            resp2 = await asyncio.wait_for(
+                client.generate(model=model_name, prompt=prompt2), timeout=30
+            )
+            summary = (resp2.get("response", "") if isinstance(resp2, dict) else str(resp2)).strip()
+
+        # --- Final check and smart truncation (fallback) ---
+        if summary and count_tokens(summary) > token_cap:
+            logger.warning(f"summarize_text_impl: Retry attempt was still too long. Applying smart truncation.")
+            sentences = re.split(r'(?<=[.!?])\s+', summary)
+            truncated_summary = ""
+            for sent in sentences:
+                if count_tokens(truncated_summary + sent) <= token_cap:
+                    truncated_summary += sent + " "
+                else:
+                    break
+            summary = truncated_summary.strip()
+            if not summary: # if first sentence is too long, just chop words
+                 words = summary.split()
+                 while count_tokens(summary) > token_cap and len(words)>1:
+                     words.pop()
+                     summary = " ".join(words) + "..."
+
+        if summary:
+            return summary
+
+    except Exception as exc:  # pragma: no cover – network errors are common in CI
+        logger.debug(f"summarize_text_impl: Ollama call failed → fallback heuristic ({exc})")
+
+    # ------------------------------------------------------------------
+    # 3) Heuristic fallback – first-sentences extractive summary
+    # ------------------------------------------------------------------
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    summary_sentences: list[str] = []
+    summary_token_count = 0
+
+    for sent in sentences:
+        if not sent:
+            continue
+        sent_tokens = count_tokens(sent)
+        if summary_token_count + sent_tokens > token_cap:
+            break
+        summary_sentences.append(sent)
+        summary_token_count += sent_tokens
+
+    if not summary_sentences and text:
+        words = text.split()
+        truncated = " ".join(words[: min(len(words), token_cap)])
+        summary_sentences.append(truncated)
+
+    summary = " ".join(summary_sentences).strip()
+
+    # Final guarantee, though less likely to be needed with sentence-based logic
+    while count_tokens(summary) > token_cap:
+        summary = " ".join(summary.split()[:-1])
+
+    return summary or "(no content)"

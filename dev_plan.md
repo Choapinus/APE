@@ -25,9 +25,9 @@
 | P0 | **Done** – read_resource wrapper tool (bridge Resources → Tools) | dev-backend | allows LLM to fetch any registry resource |
 | P0 | **Done** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
 | P0 | **Done** – `/errors` CLI command (inspect Error Bus) | dev-backend | CLI shows per-session failures |
-| P1 | **Planned** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | requires `summarize_text` tool |
-| P1 | Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | foundation for automated context trimming |
-| P1 | Add MCP tool `summarize_text` (server-side) | dev-backend | used by `WindowMemory` for condensation |
+| P1 | **Done** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | Implemented in `WindowMemory` |
+| P1 | **Done** – Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | Implemented in `ape/core/memory.py` |
+| P1 | **Done** – Add MCP tool `summarize_text` (server-side) | dev-backend | Implemented and used by `WindowMemory` |
 | P1 | **Planned** – Implement `call_agent` (A2A) tool with depth guard | dev-backend | spawns peer agent for sub-tasks |
 | P2 | Extend plugin discovery to Prompts **and** Resources | dev-platform | unify entry-point group |
 | P2 | **Done** – Plugin discovery extended to Prompts & Resources | dev-platform | entry-point groups `ape_prompts.dirs`, `ape_resources.adapters` |
@@ -59,9 +59,9 @@
    - ✅ Prompt Registry implemented & served via MCP.  
    - ✅ Resource Registry implemented (`conversation://*`, `schema://*`).
    - ✅ Error Bus resource & `/errors` CLI completed.
-3. **M2 – Context Intelligence**
-   - ✅ Sliding window guard completed; next: hybrid summarisation.
-   - `summarize_text` tool & WindowMemory.
+3. **M2 – Context Intelligence** *(COMPLETE)*
+   - ✅ Sliding window guard implemented.
+   - ✅ Hybrid summarisation policy is complete, using `WindowMemory` and the `summarize_text` tool.
 4. **M3 – Memory-Augmented Agent (Vector)**
    - Embedding store, RAG resource, improved recall.
 5. **M4 – Security Hardened**

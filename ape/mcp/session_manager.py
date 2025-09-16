@@ -45,7 +45,6 @@ class SessionManager:
             """
             CREATE TABLE IF NOT EXISTS tool_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
                 tool TEXT NOT NULL,
                 arguments TEXT,
                 error TEXT NOT NULL,
@@ -53,6 +52,35 @@ class SessionManager:
             )
         """
         )
+        
+        # New: table for storing summarization events
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                original_messages TEXT NOT NULL, -- JSON serialized list of messages
+                summary_text TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        
+        # ------------------------------------------------------------------
+        # Backward-compatibility migration: older installations created
+        # the *tool_errors* table **without** the session_id column.  The
+        # CREATE TABLE … IF NOT EXISTS above does *not* add missing columns
+        # to an existing table, so we run a lightweight check and apply the
+        # ALTER TABLE only when required.
+        # ------------------------------------------------------------------
+        try:
+            cursor.execute("PRAGMA table_info(tool_errors)")
+            cols = [row[1] for row in cursor.fetchall()]
+            if "session_id" not in cols:
+                cursor.execute("ALTER TABLE tool_errors ADD COLUMN session_id TEXT")
+                logger.debug("[DB] Added missing session_id column to tool_errors table")
+        except Exception as exc:
+            logger.error(f"[DB] Failed to ensure session_id column exists: {exc}")
         
         conn.commit()
         conn.close()
@@ -168,6 +196,25 @@ class SessionManager:
                 await conn.commit()
         except Exception as exc:
             logger.error(f"[async] Error saving tool error: {exc}")
+
+    async def a_save_summary(self, session_id: str, original_messages: List[Dict], summary_text: str):
+        """Saves a summarization event to the database."""
+        try:
+            from ape.db_pool import get_db
+
+            async with get_db() as conn:
+                await conn.execute(
+                    "INSERT INTO summaries (session_id, original_messages, summary_text) VALUES (?, ?, ?)",
+                    (
+                        session_id,
+                        json.dumps(original_messages),
+                        summary_text,
+                    ),
+                )
+                await conn.commit()
+                logger.debug(f"[DB] Saved summary for session {session_id}")
+        except Exception as exc:
+            logger.error(f"[async] Error saving summary: {exc}")
 
     # ------------------------------------------------------------------
     # Error retrieval helpers

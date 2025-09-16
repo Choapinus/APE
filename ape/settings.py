@@ -71,5 +71,18 @@ class Settings(BaseSettings):
 
     CONTEXT_MARGIN_TOKENS: int = Field(1024, description="Safety buffer deducted from model context length before pruning")
 
+    # Memory / summarisation
+    SUMMARIZE_THOUGHTS: bool = Field(
+        False,
+        description="When True, <think> blocks are included in summarisation; when False they are stripped before summarize_text."
+    )
+
+    SUMMARY_MAX_TOKENS: int = Field(
+        128,
+        description="Default maximum length (in tokens) for summaries produced by summarize_text when caller does not specify a cap.",
+        ge=32,
+        le=8192,
+    )
+
 
 settings = Settings() 

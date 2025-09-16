@@ -4,7 +4,7 @@ from __future__ import annotations
 
 Use setup_logger() at program start. Idempotent – repeated calls are no-ops.
 """
-
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -39,7 +39,12 @@ def setup_logger(
     logger.add("logs/debug.log", level="DEBUG", rotation="1 MB", retention="10 days")
 
     # pretty-print to stderr at the chosen level
-    logger.add(lambda msg: print(msg, end=""), level=level)
+    logger.add(
+        sys.stderr,
+        level=level,
+        format="<level>{message}</level>",
+        colorize=True,
+    )
 
     logger.level(level)
     logger.info("Logger initialised (level: {})", level)

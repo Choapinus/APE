@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from loguru import logger
@@ -24,11 +24,45 @@ class AgentCore:
         context_manager,
         *,
         agent_name: str = "APE",
+        role_definition: str = "",
+        context_limit: int | None = None,
     ) -> None:
         self.session_id = session_id
         self.mcp_client = mcp_client
         self.context_manager = context_manager
         self.agent_name = agent_name
+        self.role_definition = role_definition
+
+        # ------------------------------------------------------------------
+        # M2 – Context Intelligence: initialise hybrid window memory
+        # ------------------------------------------------------------------
+        try:
+            from ape.core.memory import WindowMemory  # local import to avoid circular deps
+
+            # Prefer explicit override, fallback to attribute from subclass, then 8192
+            if context_limit is not None:
+                ctx_limit = context_limit
+            else:
+                ctx_limit = getattr(self, "context_limit", 8192)
+
+            self.memory = WindowMemory(ctx_limit=ctx_limit, mcp_client=mcp_client, session_id=session_id)
+        except Exception as exc:  # pragma: no cover – memory must not break agent
+            logger.warning(f"WindowMemory disabled: {exc}")
+            self.memory = None
+
+    async def refresh_context_window(self) -> None:
+        """A capability that allows the agent to clear its own short-term memory.
+
+        This is a powerful tool for an agent that gets stuck in a repetitive
+        loop or needs to switch contexts. It forces the current message buffer
+        to be summarized and archived, giving the agent a 'fresh start' for its
+        next reasoning cycle.
+        """
+        if hasattr(self, "memory") and self.memory:
+            logger.info(f"Agent {self.agent_name} is refreshing its context window.")
+            await self.memory.force_summarize()
+        else:
+            logger.warning("refresh_context_window called but no memory module is available.")
 
     # ------------------------------------------------------------------
     # The following methods are *verbatim* copies of ChatAgent – kept here so
@@ -38,6 +72,21 @@ class AgentCore:
 
     async def discover_capabilities(self) -> Dict[str, Any]:
         from ape.prompts import list_prompts as _local_list  # local import
+
+        # ------------------------------------------------------------------
+        # Simple per-agent cache with 5-minute TTL to avoid a round-trip on
+        # every turn while still reflecting dynamic tool changes.
+        # ------------------------------------------------------------------
+
+        TTL = timedelta(minutes=5)
+        now = datetime.utcnow()
+
+        if (
+            hasattr(self, "_cached_capabilities")
+            and hasattr(self, "_caps_timestamp")
+            and (now - self._caps_timestamp) < TTL
+        ):
+            return self._cached_capabilities  # type: ignore[attr-defined]
 
         capabilities: Dict[str, Any] = {"tools": [], "prompts": [], "resources": []}
 
@@ -93,8 +142,14 @@ class AgentCore:
             ]
         except Exception:
             pass
+        
+        # commented out for now because it's too verbose for the CLI
+        # logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
 
-        logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
+        # Cache result with timestamp
+        self._cached_capabilities = capabilities  # type: ignore[attr-defined]
+        self._caps_timestamp = now  # type: ignore[attr-defined]
+
         return capabilities
 
     async def create_dynamic_system_prompt(self, capabilities: Dict[str, Any]) -> str:
@@ -129,6 +184,9 @@ class AgentCore:
                 "tools_section": tools_section,
                 "prompts_section": prompts_section,
                 "resources_section": resources_section,
+                "role_definition": getattr(self, "role_definition", ""),
+                # Expose WindowMemory summary inside the system prompt (M2)
+                "memory_summary": getattr(self.memory, "latest_context", lambda: "")(),
             },
         )
 
@@ -161,6 +219,23 @@ class AgentCore:
             fn = call["function"]["name"]
             arguments = call["function"]["arguments"]
 
+            # --------------------------------------------------------------
+            # Rate-limiting (per session) – block excessive tool spam
+            # --------------------------------------------------------------
+            try:
+                from ape.core.rate_limiter import allow as _rl_allow
+
+                if not _rl_allow(self.session_id):
+                    results.append({
+                        "tool": fn,
+                        "arguments": arguments,
+                        "result": "RATE_LIMIT_EXCEEDED: Too many tool calls per minute; slow down.",
+                    })
+                    # Skip actual execution for this tool call
+                    continue
+            except Exception as exc:  # pragma: no cover – limiter must not crash tool flow
+                logger.debug(f"Rate-limiter check failed (ignored): {exc}")
+
             # Simple placeholder substitution using the context manager
             if isinstance(arguments, dict):
                 for k, v in list(arguments.items()):
@@ -171,7 +246,8 @@ class AgentCore:
                     ):
                         arguments[k] = self.context_manager.extracted_values["last_session_id"]
 
-            logger.info(f"Executing tool {fn} with args {arguments}")
+            logger.bind(agent=self.agent_name).info(
+                f"Executing tool {fn} with args {arguments}")
             try:
                 res = await self.mcp_client.call_tool(fn, arguments)
                 raw = res.content[0].text if res.content else ""
@@ -179,22 +255,35 @@ class AgentCore:
                 # verify JWT
                 verified = False
                 payload_text = ""
+                verification_error = ""
                 try:
                     env = json.loads(raw)
                     token = env.get("jwt") or env.get("sig") or ""
                     if token:
                         import jwt
-                        decoded = jwt.decode(token, settings.MCP_JWT_KEY, algorithms=["HS256"])
-                        verified = True
-                        payload_text = decoded.get("payload") or json.dumps(decoded, ensure_ascii=False)
+                        try:
+                            decoded = jwt.decode(token, settings.MCP_JWT_KEY, algorithms=["HS256"])
+                            verified = True
+                            payload_text = decoded.get("payload") or json.dumps(decoded, ensure_ascii=False)
+                        except jwt.ExpiredSignatureError as sig_exc:
+                            verification_error = f"Signature expired: {sig_exc}"
+                        except jwt.InvalidTokenError as sig_exc:
+                            verification_error = f"Invalid signature: {sig_exc}"
                     else:
+                        verification_error = "Missing JWT signature in tool result."
                         payload_text = env.get("payload", "") or raw
-                except jwt.ExpiredSignatureError:
-                    payload_text = "❌ ERROR: Tool result signature expired."
-                except Exception:
+                except Exception as exc_inner:
+                    verification_error = f"Malformed tool response: {exc_inner}"
                     payload_text = raw
 
-                text = payload_text if verified else "❌ ERROR: Tool result signature verification failed."
+                if verified:
+                    text = payload_text
+                else:
+                    # If the tool wrapper returned a plain error string (no JWT), surface it.
+                    if payload_text:
+                        text = f"❌ TOOL ERROR: {payload_text.strip()}"
+                    else:
+                        text = f"❌ ERROR: Tool result signature verification failed – {verification_error or 'unknown reason.'}"
                 # Log signature verification failure as structured error
                 if not verified:
                     try:
@@ -221,7 +310,7 @@ class AgentCore:
                 f"<tool_output index=\"{idx}\" name=\"{r['tool']}\">\n"
                 f"Arguments: `{json.dumps(r['arguments'], ensure_ascii=False)}`\n\n"
                 f"{r['result']}\n"
-                "</tool_output>\n"
+                f"</tool_output>\n"
             )
             formatted_lines.append(tool_block)
         formatted_lines.append("🔧 SYSTEM NOTE: END_TOOL_OUTPUT\n")
@@ -240,6 +329,17 @@ class AgentCore:
 
         capabilities = await self.discover_capabilities()
         system_prompt = await self.create_dynamic_system_prompt(capabilities)
+
+        # ------------------------------------------------------------------
+        # Update memory with the incoming *user* message and prune if needed
+        # BEFORE sending the payload to the model so the context stays within
+        # the token budget.
+        # ------------------------------------------------------------------
+        if hasattr(self, "memory") and self.memory:
+            # Add the new user message (conversation list may already contain
+            # older messages which are tracked separately inside memory).
+            self.memory.add({"role": "user", "content": message})
+            await self.memory.prune()
 
         ctx_summary = self.context_manager.get_context_summary()
         if ctx_summary.strip() != "CURRENT SESSION CONTEXT:":
@@ -288,6 +388,9 @@ class AgentCore:
         import ollama
 
         client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
+        # Normalised tools payload (OpenAI spec) – avoids 500 JSON errors
+        tools_spec = await self.get_ollama_tools()
+
         max_iter = settings.MAX_TOOLS_ITERATIONS
         iteration = 0
         cumulative_resp = ""
@@ -296,15 +399,28 @@ class AgentCore:
             current_chunk = ""
             has_tool_calls = False
 
-            stream = await client.chat(
-                model=settings.LLM_MODEL,
-                messages=exec_conversation,
-                tools=capabilities["tools"],
-                options={"temperature": settings.TEMPERATURE,
-                         "top_p": settings.TOP_P,
-                         "top_k": settings.TOP_K},
-                stream=True,
-            )
+            try:
+                stream = await client.chat(
+                    model=settings.LLM_MODEL,
+                    messages=exec_conversation,
+                    tools=tools_spec,
+                    options={"temperature": settings.TEMPERATURE,
+                             "top_p": settings.TOP_P,
+                             "top_k": settings.TOP_K},
+                    stream=True,
+                )
+            except Exception as first_exc:
+                # Some models error (HTTP 500) when a tools payload is present –
+                # retry once without tools to keep basic chat working.
+                logger.warning(f"Ollama chat failed with tools payload (will retry without tools): {first_exc}")
+                stream = await client.chat(
+                    model=settings.LLM_MODEL,
+                    messages=exec_conversation,
+                    options={"temperature": settings.TEMPERATURE,
+                             "top_p": settings.TOP_P,
+                             "top_k": settings.TOP_K},
+                    stream=True,
+                )
 
             async for chunk in stream:
                 if "message" not in chunk:
@@ -315,7 +431,12 @@ class AgentCore:
                         stream_callback(content)
                     current_chunk += content
 
-                if msg.get("tool_calls"):
+                # ------------------------------------------------------------------
+                # Tool calling – handle both plural "tool_calls" (OpenAI/Qwen spec)
+                # and singular "tool_call" (some models emit only one object).
+                # ------------------------------------------------------------------
+                tool_calls_payload = msg.get("tool_calls") or msg.get("tool_call")
+                if tool_calls_payload:
                     has_tool_calls = True
                     iteration += 1
 
@@ -324,7 +445,11 @@ class AgentCore:
                         cumulative_resp += current_chunk + "\n"
                         current_chunk = ""
 
-                    tool_result_str = await self.handle_tool_calls(msg["tool_calls"])
+                    # Convert single dict to list for downstream handler API
+                    if not isinstance(tool_calls_payload, list):
+                        tool_calls_payload = [tool_calls_payload]
+
+                    tool_result_str = await self.handle_tool_calls(tool_calls_payload)
                     if stream_callback:
                         stream_callback("\n" + tool_result_str)
                     exec_conversation.append({"role": "tool", "content": tool_result_str})
@@ -333,6 +458,11 @@ class AgentCore:
             if not has_tool_calls:
                 if current_chunk:
                     cumulative_resp += current_chunk
+
+                # Store assistant answer in WindowMemory (if enabled)
+                if hasattr(self, "memory") and self.memory:
+                    self.memory.add({"role": "assistant", "content": cumulative_resp})
+
                 break
 
         return cumulative_resp 

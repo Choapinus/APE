@@ -9,6 +9,7 @@ from ape.mcp.implementations import (
     get_last_N_user_interactions_impl,
     get_last_N_tool_interactions_impl,
     get_last_N_agent_interactions_impl,
+    summarize_text_impl,
 )
 from ape.mcp.plugin import tool
 from ape.mcp.models import (
@@ -23,9 +24,9 @@ from ape.resources import read_resource as _read_resource
 execute_query_schema = {
     "type": "object",
     "properties": {
-        "sql_query": {"type": "string", "description": "SQL query to execute"},
+        "query": {"type": "string", "description": "SQL query to execute"},
     },
-    "required": ["sql_query"],
+    "required": ["query"],
 }
 
 @tool("execute_database_query", "Execute a SQL query on the conversation database.", execute_query_schema)
@@ -135,4 +136,26 @@ async def read_resource_tool(uri: str, limit: int | None = None):
 
         return content
     except Exception as exc:
-        return f"ERROR reading resource {uri}: {exc}" 
+        return f"ERROR reading resource {uri}: {exc}"
+
+# ---------------------------------------------------------------------------
+# 🆕 Summarise Text Tool
+# ---------------------------------------------------------------------------
+
+summarize_schema = {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string", "description": "Text to be summarised (max 4000 tokens)"},
+    },
+    "required": ["text"],
+}
+
+@tool("summarize_text", "Return a concise summary of the provided text", summarize_schema)
+async def summarize_text(**kwargs):
+    """Expose :pyfunc:`ape.mcp.implementations.summarize_text_impl` via MCP."""
+    # Pass through validated params to the impl function
+    text: str = kwargs["text"]
+
+    summary = await summarize_text_impl(text)
+    # The tool contract demands *plain text* → ensure string return
+    return summary 

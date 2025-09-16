@@ -7,12 +7,18 @@ from pydantic import BaseModel, Field
 
 
 class ExecuteDatabaseQueryRequest(BaseModel):
-    sql_query: Optional[str] = Field(None, description="Primary SQL query parameter")
-    query: Optional[str] = Field(None, description="Alias for sql_query for backwards-compat")
+    """Validated payload for :pyfunc:`execute_database_query` tool.
+
+    The new contract expects **only** the field ``query``.  The legacy
+    alias ``sql_query`` has been removed to avoid ambiguity that caused the model
+    to emit duplicate parameters (``sql`` + ``sql_query``) in tool calls.
+    """
+
+    query: str = Field(..., description="Read-only SELECT statement to execute")
 
     @property
     def normalized_query(self) -> str:
-        return (self.sql_query or self.query or "").strip()
+        return self.query.strip()
 
 
 class ExecuteDatabaseQueryResponse(BaseModel):

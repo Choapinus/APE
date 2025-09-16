@@ -17,7 +17,7 @@ import importlib
 
 from loguru import logger
 import ollama
-from ape.utils import setup_logger
+from ape.utils import setup_logger, count_tokens
 
 from ape.mcp.session_manager import get_session_manager
 from ape.cli.context_manager import ContextManager
@@ -74,6 +74,7 @@ class APEChatCLI:
         print("  /exit     - Exit chat")
         print("  /q        - Exit chat")
         print("  /errors   - Show recent tool errors")
+        print("  /memory   - Show WindowMemory summary & stats")
         print("\n🧠 Intelligence: Connected to MCP server with tools:")
         print("  • Database tools for conversation management")
         print("  • Search tools for finding content")
@@ -583,6 +584,7 @@ Available commands:
   /exit     - Exit chat
   /q        - Exit chat
   /errors   - Show recent tool errors
+  /memory   - Show WindowMemory summary & stats
 
 🚀 Enhanced Autonomous Capabilities:
 The agent can now handle complex multi-step tasks naturally by:
@@ -633,6 +635,33 @@ The agent will use its natural reasoning to break down complex tasks!
             logger.error(f"Error fetching tool errors: {exc}")
             print(f"❌ Error fetching tool errors: {exc}")
     
+    async def show_memory(self):
+        """Display WindowMemory stats and current summary."""
+        try:
+            mem = getattr(self.chat_agent, "memory", None)
+            if mem is None:
+                print("❌ Memory module not initialised.")
+                return
+
+            raw_msg_count = len(mem.messages)
+            raw_tokens = sum(count_tokens(m["content"]) for m in mem.messages)
+            summary_tokens = count_tokens(mem.summary)
+            total = mem.tokens()
+
+            print("\n🧠 WINDOW MEMORY STATUS")
+            print("-" * 60)
+            print(f"Raw messages kept : {raw_msg_count}")
+            print(f"Raw tokens        : {raw_tokens}")
+            print(f"Summary tokens    : {summary_tokens}")
+            print(f"Total tokens      : {total}")
+            print("-" * 60)
+            print("CURRENT SUMMARY: \n")
+            print(mem.latest_context())
+            print("\n" + "-" * 60)
+        except Exception as exc:
+            logger.error(f"Error displaying memory: {exc}")
+            print(f"❌ Error displaying memory: {exc}")
+    
     async def run(self):
         """Main chat loop."""
         self.print_banner()
@@ -674,6 +703,8 @@ The agent will use its natural reasoning to break down complex tasks!
                             self.clear_context()
                         elif user_input == '/errors':
                             await self.show_errors()
+                        elif user_input == '/memory':
+                            await self.show_memory()
                         continue
                     
                     # Process regular message
@@ -735,9 +766,6 @@ The agent will use its natural reasoning to break down complex tasks!
 
 async def main():
     """Main entry point for the CLI chat."""
-    # Configure logging
-    logger.remove()  # Remove default handler
-    logger.add("logs/cli_chat.log", rotation="1 day", retention="7 days")
     
     print("🚀 Starting APE CLI Chat with MCP...")
     
