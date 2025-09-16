@@ -1,31 +1,26 @@
 """Main MCP server for APE (Advanced Prompt Engine)."""
 
 import json
-import asyncio
 import time
-from typing import Any, Sequence
+from typing import Any
 from uuid import uuid4
-import os
 
+import mcp.server.fastmcp
 import mcp.types as types
-from mcp.server.models import InitializationOptions
-from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
-
+from fastapi import FastAPI
 from loguru import logger
-from ape.utils import setup_logger
+from mcp.server import Server
 
-from .plugin import discover
-from .session_manager import get_session_manager
+from ape.errors import ApeError
 from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 from ape.prompts import list_prompts as _list_prompts, render_prompt
 from ape.resources import list_resources as _list_resources, read_resource as _read_resource
+from ape.settings import settings
 
-from ape.settings import settings  # local import to avoid circular deps
+from .plugin import discover
+from .session_manager import get_session_manager
 
 import jwt  # PyJWT
-from ape.errors import ApeError  # local import
-
 
 def create_mcp_server() -> Server:
     """Create and configure the MCP server with all tools and resources."""
@@ -203,36 +198,9 @@ def create_mcp_server() -> Server:
 
     return server
 
+app = FastAPI()
 
-async def run_server():
-    """Run the MCP server."""
-    # ensure sinks configured
-    setup_logger()
+mcp_app = create_mcp_server()
 
-    logger.info("🚀 [MCP SERVER] Starting APE MCP Server...")
-    
-    server = create_mcp_server()
-    logger.info("⚙️ [MCP SERVER] Server created with tools and resources configured")
-    
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        logger.info("📡 [MCP SERVER] STDIO streams established, server ready for connections")
-        
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="ape-server",
-                server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
-        
-        logger.info("🛑 [MCP SERVER] Server shutdown")
-
-
-if __name__ == "__main__":
-    # Run the MCP server
-    asyncio.run(run_server()) 
+mcp_router = mcp.server.fastapi.create_router(mcp_app)
+app.include_router(mcp_router) 
