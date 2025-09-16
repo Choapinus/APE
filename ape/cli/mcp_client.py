@@ -65,15 +65,21 @@ class MCPClient:
     async def disconnect(self) -> None:
         """Gracefully close the MCP session and underlying stdio transport."""
         try:
-            if self._session_context is not None:
-                await self._session_context.__aexit__(None, None, None)
-                self._session_context = None
-                logger.info("🤝 [MCP CLIENT] MCP session closed")
+            # This inner try/except is new. It handles race conditions and
+            # context mismatches that can occur during shutdown of multi-agent
+            # simulations, where multiple clients are being disconnected.
+            try:
+                if self._session_context is not None:
+                    await self._session_context.__aexit__(None, None, None)
+                    self._session_context = None
+                    logger.info("🤝 [MCP CLIENT] MCP session closed")
 
-            if self._stdio_context is not None:
-                await self._stdio_context.__aexit__(None, None, None)
-                self._stdio_context = None
-                logger.info("📡 [MCP CLIENT] STDIO connection closed")
+                if self._stdio_context is not None:
+                    await self._stdio_context.__aexit__(None, None, None)
+                    self._stdio_context = None
+                    logger.info("📡 [MCP CLIENT] STDIO connection closed")
+            except (RuntimeError, asyncio.CancelledError) as exc:
+                logger.warning(f"Ignoring expected shutdown error: {exc}")
 
             self.mcp_session = None
             logger.info("✅ [MCP CLIENT] Disconnected successfully")

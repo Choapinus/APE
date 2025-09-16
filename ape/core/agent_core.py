@@ -128,8 +128,9 @@ class AgentCore:
             ]
         except Exception:
             pass
-
-        logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
+        
+        # commented out for now because it's too verbose for the CLI
+        # logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
 
         # Cache result with timestamp
         self._cached_capabilities = capabilities  # type: ignore[attr-defined]
@@ -373,6 +374,9 @@ class AgentCore:
         import ollama
 
         client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
+        # Normalised tools payload (OpenAI spec) – avoids 500 JSON errors
+        tools_spec = await self.get_ollama_tools()
+
         max_iter = settings.MAX_TOOLS_ITERATIONS
         iteration = 0
         cumulative_resp = ""
@@ -381,15 +385,28 @@ class AgentCore:
             current_chunk = ""
             has_tool_calls = False
 
-            stream = await client.chat(
-                model=settings.LLM_MODEL,
-                messages=exec_conversation,
-                tools=capabilities["tools"],
-                options={"temperature": settings.TEMPERATURE,
-                         "top_p": settings.TOP_P,
-                         "top_k": settings.TOP_K},
-                stream=True,
-            )
+            try:
+                stream = await client.chat(
+                    model=settings.LLM_MODEL,
+                    messages=exec_conversation,
+                    tools=tools_spec,
+                    options={"temperature": settings.TEMPERATURE,
+                             "top_p": settings.TOP_P,
+                             "top_k": settings.TOP_K},
+                    stream=True,
+                )
+            except Exception as first_exc:
+                # Some models error (HTTP 500) when a tools payload is present –
+                # retry once without tools to keep basic chat working.
+                logger.warning(f"Ollama chat failed with tools payload (will retry without tools): {first_exc}")
+                stream = await client.chat(
+                    model=settings.LLM_MODEL,
+                    messages=exec_conversation,
+                    options={"temperature": settings.TEMPERATURE,
+                             "top_p": settings.TOP_P,
+                             "top_k": settings.TOP_K},
+                    stream=True,
+                )
 
             async for chunk in stream:
                 if "message" not in chunk:
@@ -400,7 +417,12 @@ class AgentCore:
                         stream_callback(content)
                     current_chunk += content
 
-                if msg.get("tool_calls"):
+                # ------------------------------------------------------------------
+                # Tool calling – handle both plural "tool_calls" (OpenAI/Qwen spec)
+                # and singular "tool_call" (some models emit only one object).
+                # ------------------------------------------------------------------
+                tool_calls_payload = msg.get("tool_calls") or msg.get("tool_call")
+                if tool_calls_payload:
                     has_tool_calls = True
                     iteration += 1
 
@@ -409,7 +431,11 @@ class AgentCore:
                         cumulative_resp += current_chunk + "\n"
                         current_chunk = ""
 
-                    tool_result_str = await self.handle_tool_calls(msg["tool_calls"])
+                    # Convert single dict to list for downstream handler API
+                    if not isinstance(tool_calls_payload, list):
+                        tool_calls_payload = [tool_calls_payload]
+
+                    tool_result_str = await self.handle_tool_calls(tool_calls_payload)
                     if stream_callback:
                         stream_callback("\n" + tool_result_str)
                     exec_conversation.append({"role": "tool", "content": tool_result_str})

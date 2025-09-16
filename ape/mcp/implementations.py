@@ -522,8 +522,9 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
     High-level algorithm:
     1. Enforce a 4 000-token hard limit on *input* for safety.
     2. Try to get a high-quality TL;DR from the configured Ollama model.
-    3. If the Ollama request fails (no server, timeout, etc.), fall back to a
-       fast heuristic extractive summary (the code that used to be here).
+    3. If the summary is too long, retry once with a more insistent prompt.
+    4. If it's still too long, apply a smarter sentence-based truncation.
+    5. If the Ollama request fails, fall back to a heuristic extractive summary.
 
     The function remains **self-contained** (no external async helpers) so that
     unit tests can monkey-patch the Ollama client easily.
@@ -556,44 +557,66 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
     token_cap = settings.SUMMARY_MAX_TOKENS
 
     # ------------------------------------------------------------------
-    # 1) Attempt intelligent TL;DR via Ollama
+    # 2) Attempt intelligent TL;DR via Ollama (with retry)
     # ------------------------------------------------------------------
     try:
         import importlib
 
         ollama = importlib.import_module("ollama")
         client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
-
         model_name: str = getattr(settings, "SUMMARY_MODEL", settings.LLM_MODEL)
 
-        prompt = (
+        # --- First attempt ---
+        prompt1 = (
             f"You are an expert summariser. Provide a concise TL;DR of the following "
-            f"text in at most {token_cap} tokens.\n\n{text.strip()}\n\nTL;DR:"
+            f"text. It is critical that your response is AT MOST {token_cap} tokens long.\n\n"
+            f"Text to summarize:\n{text.strip()}\n\nTL;DR:"
         )
-
-        # Ollama response schema: {"response": "…", ...}
-        resp = await asyncio.wait_for(
-            client.generate(model=model_name, prompt=prompt), timeout=30
+        resp1 = await asyncio.wait_for(
+            client.generate(model=model_name, prompt=prompt1), timeout=30
         )
+        summary = (resp1.get("response", "") if isinstance(resp1, dict) else str(resp1)).strip()
 
-        # Newer ollama returns dict; legacy may return str
-        if isinstance(resp, dict):
-            summary = resp.get("response", "").strip()
-        else:
-            summary = str(resp).strip()
+        # --- Check and Retry if necessary ---
+        if summary and count_tokens(summary) > token_cap:
+            logger.warning(f"summarize_text_impl: First summary attempt was too long ({count_tokens(summary)} > {token_cap}). Retrying...")
+            prompt2 = (
+                f"Your previous summary was too long. Make it even more concise. "
+                f"The summary MUST be under {token_cap} tokens.\n\n"
+                f"Previous summary to shorten:\n{summary}\n\nConcise TL;DR:"
+            )
+            resp2 = await asyncio.wait_for(
+                client.generate(model=model_name, prompt=prompt2), timeout=30
+            )
+            summary = (resp2.get("response", "") if isinstance(resp2, dict) else str(resp2)).strip()
+
+        # --- Final check and smart truncation (fallback) ---
+        if summary and count_tokens(summary) > token_cap:
+            logger.warning(f"summarize_text_impl: Retry attempt was still too long. Applying smart truncation.")
+            sentences = re.split(r'(?<=[.!?])\s+', summary)
+            truncated_summary = ""
+            for sent in sentences:
+                if count_tokens(truncated_summary + sent) <= token_cap:
+                    truncated_summary += sent + " "
+                else:
+                    break
+            summary = truncated_summary.strip()
+            if not summary: # if first sentence is too long, just chop words
+                 words = summary.split()
+                 while count_tokens(summary) > token_cap and len(words)>1:
+                     words.pop()
+                     summary = " ".join(words) + "..."
 
         if summary:
-            # Ensure it fits the token cap; truncate if not.
-            while count_tokens(summary) > token_cap:
-                summary = " ".join(summary.split()[:-1])
             return summary
+
     except Exception as exc:  # pragma: no cover – network errors are common in CI
         logger.debug(f"summarize_text_impl: Ollama call failed → fallback heuristic ({exc})")
 
     # ------------------------------------------------------------------
-    # 2) Heuristic fallback – first-sentences extractive summary
+    # 3) Heuristic fallback – first-sentences extractive summary
     # ------------------------------------------------------------------
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     summary_sentences: list[str] = []
     summary_token_count = 0
 
@@ -613,7 +636,8 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
 
     summary = " ".join(summary_sentences).strip()
 
+    # Final guarantee, though less likely to be needed with sentence-based logic
     while count_tokens(summary) > token_cap:
         summary = " ".join(summary.split()[:-1])
 
-    return summary or "(no content)" 
+    return summary or "(no content)"
