@@ -4,51 +4,45 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from loguru import logger
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+from ape.settings import settings
 
 
 class MCPClient:
-    """Manage an MCP session over stdio.
+    """Manage an MCP session over HTTP.
 
     Public coroutines mirror the official MCP client interface but always check
     `self.is_connected` first to avoid runtime errors.
     """
 
-    def __init__(self, server_command: str = "python", server_script: str = "mcp_server.py"):
-        self._server_command = server_command
-        self._server_script = server_script
-
-        self._stdio_context: Optional[asyncio.AbstractAsyncContextManager] = None
-        self._session_context: Optional[asyncio.AbstractAsyncContextManager] = None
+    def __init__(self):
+        self._read_stream = None
+        self._write_stream = None
+        self._get_session_id_callback = None
         self.mcp_session: Optional[ClientSession] = None
 
     # ---------------------------------------------------------------------
     # Connection management
     # ---------------------------------------------------------------------
     async def connect(self) -> bool:
-        """Start the server (if needed) and open an MCP session over stdio."""
+        """Open an MCP session over HTTP."""
         if self.mcp_session:
             logger.debug("MCPClient.connect(): already connected – skipping")
             return True
 
         try:
-            logger.info("🔗 [MCP CLIENT] Connecting to MCP server…")
+            logger.info(f"🔗 [MCP CLIENT] Connecting to MCP server at {settings.MCP_SERVER_URL}…")
 
-            server_params = StdioServerParameters(
-                command=self._server_command,
-                args=[self._server_script],
-                env=None,
-            )
+            # Use the streamablehttp_client context manager
+            # This yields (read_stream, write_stream, get_session_id_callback)
+            # We need to enter this context manually and manage its exit.
+            self._client_context = streamablehttp_client(url=str(settings.MCP_SERVER_URL))
+            self._read_stream, self._write_stream, self._get_session_id_callback = await self._client_context.__aenter__()
 
-            # create the stdio transport context
-            self._stdio_context = stdio_client(server_params)
-            read, write = await self._stdio_context.__aenter__()
-            logger.info("📡 [MCP CLIENT] STDIO connection established")
-
-            # wrap the low-level transport in the higher-level ClientSession
-            self._session_context = ClientSession(read, write)
-            self.mcp_session = await self._session_context.__aenter__()
+            # Wrap the low-level streams in the higher-level ClientSession
+            self.mcp_session = ClientSession(self._read_stream, self._write_stream)
             logger.info("🤝 [MCP CLIENT] MCP session created")
 
             # do protocol handshake
@@ -63,26 +57,25 @@ class MCPClient:
             return False
 
     async def disconnect(self) -> None:
-        """Gracefully close the MCP session and underlying stdio transport."""
+        """Gracefully close the MCP session and underlying HTTP client."""
         try:
-            # This inner try/except is new. It handles race conditions and
-            # context mismatches that can occur during shutdown of multi-agent
-            # simulations, where multiple clients are being disconnected.
-            try:
-                if self._session_context is not None:
-                    await self._session_context.__aexit__(None, None, None)
-                    self._session_context = None
-                    logger.info("🤝 [MCP CLIENT] MCP session closed")
+            if self.mcp_session:
+                # The ClientSession doesn't have a close method, it relies on streams closing
+                self.mcp_session = None
+                logger.info("🤝 [MCP CLIENT] MCP session cleared")
 
-                if self._stdio_context is not None:
-                    await self._stdio_context.__aexit__(None, None, None)
-                    self._stdio_context = None
-                    logger.info("📡 [MCP CLIENT] STDIO connection closed")
-            except (RuntimeError, asyncio.CancelledError) as exc:
-                logger.warning(f"Ignoring expected shutdown error: {exc}")
+            if self._client_context:
+                # Exit the async context manager to close underlying HTTP client and streams
+                await self._client_context.__aexit__(None, None, None)
+                self._client_context = None
+                self._read_stream = None
+                self._write_stream = None
+                self._get_session_id_callback = None
+                logger.info("📡 [MCP CLIENT] HTTP client and streams closed")
 
-            self.mcp_session = None
             logger.info("✅ [MCP CLIENT] Disconnected successfully")
+        except (RuntimeError, asyncio.CancelledError) as exc:
+            logger.warning(f"Ignoring expected shutdown error: {exc}")
         except Exception as exc:
             logger.error(f"❌ [MCP CLIENT] Error when disconnecting: {exc}")
 

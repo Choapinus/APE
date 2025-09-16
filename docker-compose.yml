@@ -1,0 +1,49 @@
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - "/mnt/e/ollama_models:/root/.ollama"
+    restart: unless-stopped
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ape_mcp_server
+    command: uvicorn ape.mcp.server:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ape_data:/app/ape
+    environment:
+      - MCP_JWT_KEY=${MCP_JWT_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - SESSION_DB_PATH=/app/ape/sessions.db
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ape-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ape_cli_chat
+    command: python cli_chat.py
+    volumes:
+      - ape_data:/app/ape
+    environment:
+      - MCP_JWT_KEY=${MCP_JWT_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - MCP_SERVER_URL=http://mcp-server:8000
+      - SESSION_DB_PATH=/app/ape/sessions.db
+    depends_on:
+      - mcp-server
+    stdin_open: true # Keep stdin open for interactive mode
+    tty: true        # Allocate a pseudo-TTY
+
+volumes:
+  ollama_data:
+  ape_data:
