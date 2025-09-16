@@ -1,0 +1,84 @@
+# Docker build context exclusions
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Logs and temporary files
+logs/
+_logs/
+*.log
+*.tmp
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Development
+dev_plan.md
+findings/
+images/
+test_*
+inspect_*
+a2a_simulation.py
+
+# Database files (they'll be mounted as volumes)
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary or local files
+df
+downloads/

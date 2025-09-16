@@ -1,0 +1,92 @@
+services:
+  # Ollama LLM Server with GPU support
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ape_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - /mnt/e/ollama_models:/root/.ollama/models
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
+    restart: unless-stopped
+    # GPU support for WSL2 (temporarily disabled for testing)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # APE MCP Server
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ape_mcp_server
+    command: ["sh", "-c", "export MCP_JWT_KEY=$$(openssl rand -hex 32) && python mcp_server.py"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ape_data:/app/data
+      - ./ape/sessions.db:/app/ape/sessions.db
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - SESSION_DB_PATH=/app/ape/sessions.db
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8000))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # APE CLI Agent (Interactive)
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ape_agent
+    command: ["sh", "-c", "export MCP_JWT_KEY=$$(openssl rand -hex 32) && python cli_chat.py"]
+    volumes:
+      - ape_data:/app/data
+      - ./ape/sessions.db:/app/ape/sessions.db
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - SESSION_DB_PATH=/app/ape/sessions.db
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    stdin_open: true    # Keep stdin open for interactive mode
+    tty: true          # Allocate a pseudo-TTY for proper terminal
+    restart: "no"      # Don't restart agent automatically
+    profiles:
+      - interactive    # Only start when explicitly requested
+
+volumes:
+  ollama_data:
+    driver: local
+  ape_data:
+    driver: local
+
+networks:
+  default:
+    name: ape_network

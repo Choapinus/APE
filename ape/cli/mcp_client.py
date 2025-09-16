@@ -35,10 +35,14 @@ class MCPClient:
         try:
             logger.info("🔗 [MCP CLIENT] Connecting to MCP server…")
 
+            import os
+            # Pass current environment including dynamically generated MCP_JWT_KEY
+            current_env = os.environ.copy()
+            
             server_params = StdioServerParameters(
                 command=self._server_command,
                 args=[self._server_script],
-                env=None,
+                env=current_env,
             )
 
             # create the stdio transport context
