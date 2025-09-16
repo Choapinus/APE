@@ -50,6 +50,20 @@ class AgentCore:
             logger.warning(f"WindowMemory disabled: {exc}")
             self.memory = None
 
+    async def refresh_context_window(self) -> None:
+        """A capability that allows the agent to clear its own short-term memory.
+
+        This is a powerful tool for an agent that gets stuck in a repetitive
+        loop or needs to switch contexts. It forces the current message buffer
+        to be summarized and archived, giving the agent a 'fresh start' for its
+        next reasoning cycle.
+        """
+        if hasattr(self, "memory") and self.memory:
+            logger.info(f"Agent {self.agent_name} is refreshing its context window.")
+            await self.memory.force_summarize()
+        else:
+            logger.warning("refresh_context_window called but no memory module is available.")
+
     # ------------------------------------------------------------------
     # The following methods are *verbatim* copies of ChatAgent – kept here so
     # existing behaviour stays identical.  They deliberately avoid touching
@@ -296,7 +310,7 @@ class AgentCore:
                 f"<tool_output index=\"{idx}\" name=\"{r['tool']}\">\n"
                 f"Arguments: `{json.dumps(r['arguments'], ensure_ascii=False)}`\n\n"
                 f"{r['result']}\n"
-                "</tool_output>\n"
+                f"</tool_output>\n"
             )
             formatted_lines.append(tool_block)
         formatted_lines.append("🔧 SYSTEM NOTE: END_TOOL_OUTPUT\n")

@@ -37,7 +37,7 @@ from ape.utils import count_tokens
 
 
 class AgentMemory(ABC):
-    """Abstract memory interface consumed by :class:`ape.core.agent_core.AgentCore`."""
+    """Abstract memory interface consumed by :class:`ape.core.agent_core.AgentCore`. """
 
     @abstractmethod
     def add(self, message: Dict[str, str]) -> None:  # pragma: no cover – interface
@@ -54,6 +54,10 @@ class AgentMemory(ABC):
     @abstractmethod
     async def prune(self) -> None:  # pragma: no cover – interface
         """Maybe summarise + drop messages so that :pyfunc:`tokens` fits the budget."""
+
+    @abstractmethod
+    async def force_summarize(self) -> None:  # pragma: no cover – interface
+        """Force the entire current message buffer to be summarized and cleared."""
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +118,8 @@ class WindowMemory(AgentMemory):
             return " ".join(tokens[:128]) if tokens else ""
 
     async def prune(self) -> None:
-        """Summarise oldest messages until within token budget."""
+        """Summarise oldest messages, save to DB, and remove from memory."""
+        from ape.mcp.session_manager import get_session_manager # Local import
 
         margin = settings.CONTEXT_MARGIN_TOKENS
         while self.tokens() > self.ctx_limit - margin and self.messages:
@@ -122,37 +127,75 @@ class WindowMemory(AgentMemory):
             batch_size = max(1, len(self.messages) // 4)
             chunk = self.messages[:batch_size]
 
-            # Token count before removal (for metrics)
-            dropped_token_count = sum(count_tokens(m["content"]) for m in chunk)
-            del self.messages[:batch_size]
-
             text_chunk = "\n".join(m["content"] for m in chunk)
 
-            # Optionally remove internal <think> blocks before summarisation
             if not settings.SUMMARIZE_THOUGHTS:
                 text_chunk = re.sub(r"<think>.*?</think>", "", text_chunk, flags=re.S)
 
             summary_text = await self.summarize(text_chunk.strip())
 
             if summary_text:
-                # Keep summaries separated by newlines for readability
-                self.summary += ("\n" if self.summary else "") + summary_text
+                try:
+                    # Persist the summarization event to the database first
+                    sm = get_session_manager()
+                    if self.session_id:
+                        await sm.a_save_summary(self.session_id, chunk, summary_text)
 
-                new_token_count = count_tokens(summary_text)
+                    # Now, safely remove the original messages from memory
+                    del self.messages[:batch_size]
 
-                logger.debug(
-                    f"[MEM] session={self.session_id or '-'} summarised_msgs={batch_size} "
-                    f"dropped_tokens={dropped_token_count} new_tokens={new_token_count} "
-                    f"total_tokens={self.tokens()}"
-                )
+                    # And append the new summary to the cumulative in-memory summary
+                    self.summary += ("\n" if self.summary else "") + summary_text
 
-                # Remove any leftover <think> blocks the summarize_text tool
-                # may have echoed back so the summary stays clean.
-                summary_text = re.sub(r"<think>.*?</think>", "", summary_text, flags=re.S)
+                    logger.debug(
+                        f"[MEM] session={self.session_id or '-'} summarised_msgs={batch_size} "
+                        f"total_tokens={self.tokens()}"
+                    )
+
+                except Exception as exc:
+                    logger.error(f"Failed to save summary or prune messages: {exc}")
+                    # If DB save fails, do not prune messages to prevent data loss.
+                    break # Abort to avoid potential infinite loop
             else:
-                # If summarisation failed, put the messages back to avoid loss
-                self.messages = chunk + self.messages
+                # If summarisation failed, do not alter memory.
+                logger.warning("Summarization returned empty text, aborting prune cycle.")
                 break  # abort to avoid infinite loop
+
+    async def force_summarize(self) -> None:
+        """Force the entire current message buffer to be summarized and cleared."""
+        from ape.mcp.session_manager import get_session_manager  # Local import
+
+        if not self.messages:
+            logger.debug("force_summarize called with no messages to summarize.")
+            return
+
+        logger.info(f"Force summarizing {len(self.messages)} messages in buffer.")
+        chunk = self.messages[:]
+        text_chunk = "\n".join(m["content"] for m in chunk)
+
+        if not settings.SUMMARIZE_THOUGHTS:
+            text_chunk = re.sub(r"<think>.*?</think>", "", text_chunk, flags=re.S)
+
+        summary_text = await self.summarize(text_chunk.strip())
+
+        if summary_text:
+            try:
+                sm = get_session_manager()
+                if self.session_id:
+                    await sm.a_save_summary(self.session_id, chunk, summary_text)
+
+                # Clear the entire message buffer
+                self.messages.clear()
+
+                # Append the new summary
+                self.summary += ("\n" if self.summary else "") + summary_text
+                logger.info("Successfully force-summarized and cleared message buffer.")
+
+            except Exception as exc:
+                logger.error(f"Failed to save summary during force_summarize: {exc}")
+                # Do not clear messages if saving failed to prevent data loss.
+        else:
+            logger.warning("force_summarize returned empty text; buffer not cleared.")
 
     # ------------------------------------------------------------------
     # Convenience representation

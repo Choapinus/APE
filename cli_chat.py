@@ -766,9 +766,6 @@ The agent will use its natural reasoning to break down complex tasks!
 
 async def main():
     """Main entry point for the CLI chat."""
-    # Configure logging
-    logger.remove()  # Remove default handler
-    logger.add("logs/cli_chat.log", rotation="1 day", retention="7 days")
     
     print("🚀 Starting APE CLI Chat with MCP...")
     
