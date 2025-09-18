@@ -674,11 +674,13 @@ The agent will use its natural reasoning to break down complex tasks!
         try:
             while True:
                 try:
-                    if self.prompt is not None:
-                        # prompt_toolkit's async variant avoids nested event-loop issues
-                        user_input = (await self.prompt.prompt_async("\nYou: ")).strip()
-                    else:
-                        user_input = input("\nYou: ").strip()
+                    # The prompt_toolkit is causing issues with the docker terminal.
+                    # Fallback to a simpler, more robust input method.
+                    print("\nYou: ", end="", flush=True)
+                    loop = asyncio.get_running_loop()
+                    user_input = (await loop.run_in_executor(
+                        None, sys.stdin.readline
+                    )).strip()
                     
                     if not user_input:
                         continue

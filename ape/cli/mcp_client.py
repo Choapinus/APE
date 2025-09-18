@@ -1,25 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import traceback
 from typing import Any, Dict, Optional
 
 from loguru import logger
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession
+
+# Reworked to use the MCP SDK's built-in HTTP/SSE client
+# This replaces the old stdio implementation.
+from mcp.client.sse import sse_client
+
+from ape.settings import settings
 
 
 class MCPClient:
-    """Manage an MCP session over stdio.
+    """Manage an MCP session over HTTP/SSE.
 
-    Public coroutines mirror the official MCP client interface but always check
-    `self.is_connected` first to avoid runtime errors.
+    This has been refactored to connect to a standalone MCP server over the
+    network, instead of launching a subprocess via stdio.
     """
 
-    def __init__(self, server_command: str = "python", server_script: str = "mcp_server.py"):
-        self._server_command = server_command
-        self._server_script = server_script
-
-        self._stdio_context: Optional[asyncio.AbstractAsyncContextManager] = None
+    def __init__(self):
+        self._sse_context: Optional[asyncio.AbstractAsyncContextManager] = None
         self._session_context: Optional[asyncio.AbstractAsyncContextManager] = None
         self.mcp_session: Optional[ClientSession] = None
 
@@ -27,28 +30,20 @@ class MCPClient:
     # Connection management
     # ---------------------------------------------------------------------
     async def connect(self) -> bool:
-        """Start the server (if needed) and open an MCP session over stdio."""
+        """Connect to the MCP server via HTTP/SSE."""
         if self.mcp_session:
             logger.debug("MCPClient.connect(): already connected – skipping")
             return True
 
         try:
-            logger.info("🔗 [MCP CLIENT] Connecting to MCP server…")
+            # The server runs on its own, so we connect to its URL
+            server_url = str(settings.MCP_SERVER_URL).rstrip("/") + "/mcp/sse"
+            logger.info(f"🔗 [MCP CLIENT] Connecting to MCP server at {server_url}…")
 
-            import os
-            # Pass current environment including dynamically generated MCP_JWT_KEY
-            current_env = os.environ.copy()
-            
-            server_params = StdioServerParameters(
-                command=self._server_command,
-                args=[self._server_script],
-                env=current_env,
-            )
-
-            # create the stdio transport context
-            self._stdio_context = stdio_client(server_params)
-            read, write = await self._stdio_context.__aenter__()
-            logger.info("📡 [MCP CLIENT] STDIO connection established")
+            # create the SSE transport context by passing the URL directly
+            self._sse_context = sse_client(url=server_url)
+            read, write = await self._sse_context.__aenter__()
+            logger.info("📡 [MCP CLIENT] SSE connection established")
 
             # wrap the low-level transport in the higher-level ClientSession
             self._session_context = ClientSession(read, write)
@@ -62,26 +57,24 @@ class MCPClient:
             return True
         except Exception as exc:
             logger.error(f"❌ [MCP CLIENT] Failed to connect to MCP server: {exc}")
+            traceback.print_exc()
             # make sure objects are cleaned up in case of partial failure
             await self.disconnect()
             return False
 
     async def disconnect(self) -> None:
-        """Gracefully close the MCP session and underlying stdio transport."""
+        """Gracefully close the MCP session and underlying SSE transport."""
         try:
-            # This inner try/except is new. It handles race conditions and
-            # context mismatches that can occur during shutdown of multi-agent
-            # simulations, where multiple clients are being disconnected.
             try:
                 if self._session_context is not None:
                     await self._session_context.__aexit__(None, None, None)
                     self._session_context = None
                     logger.info("🤝 [MCP CLIENT] MCP session closed")
 
-                if self._stdio_context is not None:
-                    await self._stdio_context.__aexit__(None, None, None)
-                    self._stdio_context = None
-                    logger.info("📡 [MCP CLIENT] STDIO connection closed")
+                if self._sse_context is not None:
+                    await self._sse_context.__aexit__(None, None, None)
+                    self._sse_context = None
+                    logger.info("📡 [MCP CLIENT] SSE connection closed")
             except (RuntimeError, asyncio.CancelledError) as exc:
                 logger.warning(f"Ignoring expected shutdown error: {exc}")
 
@@ -91,9 +84,9 @@ class MCPClient:
             logger.error(f"❌ [MCP CLIENT] Error when disconnecting: {exc}")
 
     # ------------------------------------------------------------------
-    # Convenience pass-through helpers
+    # Convenience pass-through helpers (unchanged)
     # ------------------------------------------------------------------
-    async def list_tools(self):  # returns ListToolsResponse
+    async def list_tools(self):
         if not self.mcp_session:
             raise RuntimeError("MCPClient not connected – call connect() first")
         return await self.mcp_session.list_tools()
@@ -108,7 +101,7 @@ class MCPClient:
             raise RuntimeError("MCPClient not connected – call connect() first")
         return await self.mcp_session.list_resources()
 
-    async def call_tool(self, name: str, arguments: Dict[str, Any]):  # returns ToolCallResponse
+    async def call_tool(self, name: str, arguments: Dict[str, Any]):
         if not self.mcp_session:
             raise RuntimeError("MCPClient not connected – call connect() first")
         return await self.mcp_session.call_tool(name, arguments)
@@ -118,4 +111,4 @@ class MCPClient:
     # ------------------------------------------------------------------
     @property
     def is_connected(self) -> bool:
-        return self.mcp_session is not None 
+        return self.mcp_session is not None

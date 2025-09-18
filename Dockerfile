@@ -1,36 +1,32 @@
 # Multi-stage Dockerfile for APE MCP Server and Agent
 FROM python:3.11-slim-bookworm as base
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies including debugging tools
+# Install system dependencies including gosu for privilege-dropping
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     gdb \
     strace \
     procps \
+    util-linux \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the entire project
 COPY . .
 
-# Create non-root user for security
-RUN groupadd -r apeuser && useradd -r -g apeuser apeuser
-RUN chown -R apeuser:apeuser /app
+# Add and configure the entrypoint script
+COPY scripts/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Switch to non-root user
-USER apeuser
+# Create non-root user and its home directory
+RUN groupadd -r apeuser && useradd -r -g apeuser -d /home/apeuser -m apeuser
 
-# Set Python path
-ENV PYTHONPATH=/app:$PYTHONPATH
+# Set the entrypoint, which will run as root
+ENTRYPOINT ["docker-entrypoint.sh"]
 
-# Default command (will be overridden in docker-compose)
+# Default command (will be passed to the entrypoint)
 CMD ["python", "mcp_server.py"]

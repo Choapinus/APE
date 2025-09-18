@@ -13,7 +13,6 @@ docker-compose*.yml
 # Documentation
 README.md
 docs/
-*.md
 
 # Logs and temporary files
 logs/
@@ -31,7 +30,6 @@ __pycache__/
 *$py.class
 
 # Virtual environments
-# .env
 .venv
 env/
 venv/
@@ -70,7 +68,6 @@ coverage.xml
 dev_plan.md
 findings/
 images/
-test_*
 inspect_*
 a2a_simulation.py
 

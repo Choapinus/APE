@@ -33,18 +33,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ape-mcp-server # Added image name
     container_name: ape_mcp_server
-    command: ["sh", "-c", "export MCP_JWT_KEY=$$(openssl rand -hex 32) && python mcp_server.py"]
+    command: ["python", "mcp_server.py"]
     ports:
       - "8000:8000"
     volumes:
       - ape_data:/app/data
-      - ./ape/sessions.db:/app/ape/sessions.db
+      - ape_db:/app/database
     env_file:
       - .env
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - SESSION_DB_PATH=/app/ape/sessions.db
+      - SESSION_DB_PATH=/app/database/sessions.db
     depends_on:
       ollama:
         condition: service_healthy
@@ -61,16 +62,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ape-agent # Added unique image name
     container_name: ape_agent
-    command: ["sh", "-c", "export MCP_JWT_KEY=$$(openssl rand -hex 32) && python cli_chat.py"]
+    command: ["/bin/sh", "-c", "sleep 5; python cli_chat.py"]
     volumes:
       - ape_data:/app/data
-      - ./ape/sessions.db:/app/ape/sessions.db
+      - ape_db:/app/database
     env_file:
       - .env
     environment:
+      - MCP_SERVER_URL=http://mcp-server:8000
       - OLLAMA_BASE_URL=http://ollama:11434
-      - SESSION_DB_PATH=/app/ape/sessions.db
+      - SESSION_DB_PATH=/app/database/sessions.db
     depends_on:
       mcp-server:
         condition: service_healthy
@@ -86,6 +89,8 @@ volumes:
   ollama_data:
     driver: local
   ape_data:
+    driver: local
+  ape_db:
     driver: local
 
 networks:
