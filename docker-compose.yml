@@ -74,6 +74,7 @@ services:
       - MCP_SERVER_URL=http://mcp-server:8000
       - OLLAMA_BASE_URL=http://ollama:11434
       - SESSION_DB_PATH=/app/database/sessions.db
+      - HF_HOME=/app/data/.cache
     depends_on:
       mcp-server:
         condition: service_healthy
