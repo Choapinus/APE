@@ -75,6 +75,7 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - SESSION_DB_PATH=/app/database/sessions.db
       - HF_HOME=/app/data/.cache
+      - TERM=xterm-256color
     depends_on:
       mcp-server:
         condition: service_healthy

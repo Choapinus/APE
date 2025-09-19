@@ -697,13 +697,20 @@ The agent will use its natural reasoning to break down complex tasks!
         try:
             while True:
                 try:
-                    # The prompt_toolkit is causing issues with the docker terminal.
-                    # Fallback to a simpler, more robust input method.
-                    print("\nYou: ", end="", flush=True)
-                    loop = asyncio.get_running_loop()
-                    user_input = (await loop.run_in_executor(
-                        None, sys.stdin.readline
-                    )).strip()
+                    # Use prompt_toolkit for a better CLI experience if available
+                    if self.prompt:
+                        try:
+                            user_input = await self.prompt.prompt_async("\nYou: ")
+                        except EOFError:
+                            # Exit gracefully on Ctrl+D
+                            break
+                    else:
+                        # Fallback to a simpler, more robust input method.
+                        print("\nYou: ", end="", flush=True)
+                        loop = asyncio.get_running_loop()
+                        user_input = (await loop.run_in_executor(
+                            None, sys.stdin.readline
+                        )).strip()
                     
                     if not user_input:
                         continue
