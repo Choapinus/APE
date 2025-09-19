@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import importlib
 
+import torch
 from loguru import logger
 import ollama
 from ape.utils import setup_logger, count_tokens
