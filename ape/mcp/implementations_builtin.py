@@ -9,6 +9,7 @@ from ape.mcp.implementations import (
     get_last_N_user_interactions_impl,
     get_last_N_tool_interactions_impl,
     get_last_N_agent_interactions_impl,
+    memory_append_impl,
     summarize_text_impl,
 )
 from ape.mcp.plugin import tool
@@ -93,6 +94,31 @@ async def last_agent_interactions(**kwargs):
     return await get_last_N_agent_interactions_impl(kwargs.get("n", 5), kwargs.get("session_id"))
 
 # ---------------------------------------------------------------------------
+# 🆕 Memory append tool
+# ---------------------------------------------------------------------------
+memory_append_schema = {
+    "type": "object",
+    "properties": {
+        "text": {
+            "type": "string",
+            "description": "The text content to embed and store."
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Optional JSON metadata to store alongside the text."
+        }
+    },
+    "required": ["text"]
+}
+
+@tool("memory_append", "Appends a text snippet to the agent's long-term vector memory for later semantic retrieval.", memory_append_schema)
+async def memory_append(**kwargs):
+    """Expose :pyfunc:`ape.mcp.implementations.memory_append_impl` via MCP."""
+    text: str = kwargs["text"]
+    metadata: dict | None = kwargs.get("metadata")
+    return await memory_append_impl(text, metadata)
+
+# ---------------------------------------------------------------------------
 # 🆕 Resource wrapper tool
 # ---------------------------------------------------------------------------
 resource_schema = {
@@ -114,7 +140,7 @@ resource_schema = {
 @tool("read_resource", "Read a registry resource (conversation://*, schema://*, …)", resource_schema)
 async def read_resource_tool(uri: str, limit: int | None = None):
     """Expose Resource Registry via a standard tool call so the LLM can read URIs autonomously."""
-    ALLOWED_SCHEMES = ("conversation://", "schema://")
+    ALLOWED_SCHEMES = ("conversation://", "schema://", "memory://")
 
     if not any(uri.startswith(s) for s in ALLOWED_SCHEMES):
         return f"SECURITY_ERROR: URI scheme not permitted: {uri}"

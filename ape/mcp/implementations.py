@@ -19,6 +19,7 @@ from loguru import logger
 from .session_manager import get_session_manager
 from ape.settings import settings
 from ape.errors import DatabaseError, ToolExecutionError
+from ape.core.vector_memory import get_vector_memory
 
 # Configuration
 DB_PATH = settings.SESSION_DB_PATH
@@ -511,6 +512,22 @@ async def list_tables() -> str:
     except Exception as e:
         logger.error(f"Error listing tables: {e}")
         return "Error listing tables"
+
+
+async def memory_append_impl(text: str, metadata: dict | None = None) -> str:
+    """Implementation of the memory_append tool."""
+    logger.info(f"🧠 [IMPL] Appending to vector memory: {text[:50]}...")
+    
+    try:
+        vector_memory = await get_vector_memory()
+        vector_memory.add(text, metadata)
+        
+        logger.info("✅ [IMPL] Successfully scheduled text for embedding and storage.")
+        return "Successfully scheduled text for embedding and storage."
+        
+    except Exception as e:
+        logger.error(f"💥 [IMPL] Error appending to vector memory: {e}")
+        raise ToolExecutionError(str(e)) from e
 
 
 # ------------------------------------------------------------------

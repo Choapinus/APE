@@ -9,22 +9,24 @@ requires-python = "~=3.11"
 readme = "README.md"
 license = {text = "MIT"}
 keywords = ["MCP", "LLM", "agent", "Ollama"]
+dependencies = [
+  "loguru>=0.7.0",
+  "aiosqlite>=0.19.0",
+  "pydantic>=2.0.0",
+  "pydantic-settings>=2.1.0",
+  "httpx>=0.24.0",
+  "jinja2>=3.1.3",
+  "watchdog>=4.0.0",
+  "PyJWT>=2.8.0",
+  "mcp>=1.0.0",
+  "pyyaml>=6.0",
+  "faiss-cpu>=1.7.4",
+  "numpy>=1.26.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/your-org/ape"
 Documentation = "https://github.com/your-org/ape/tree/main/docs"
-
-[project.dependencies]
-loguru = ">=0.7.0"
-aiosqlite = ">=0.19.0"
-pydantic = ">=2.0.0"
-pydantic-settings = ">=2.1.0"
-httpx = ">=0.24.0"
-jinja2 = ">=3.1.3"
-watchdog = ">=4.0.0"
-PyJWT = ">=2.8.0"
-mcp = ">=1.0.0"
-pyyaml = ">=6.0"
 
 [project.optional-dependencies]
 llm = [

@@ -34,6 +34,8 @@ def discover() -> Dict[str, Dict[str, Any]]:
 
     try:
         importlib.import_module("ape.mcp.implementations_builtin")
+        importlib.import_module("ape.mcp.implementations.memory")
+        importlib.import_module("ape.mcp.implementations.resources")
     except ModuleNotFoundError:
         # fallback to original implementations.py if not renamed
         importlib.import_module("ape.mcp.implementations")
@@ -45,5 +47,20 @@ def discover() -> Dict[str, Dict[str, Any]]:
         except Exception as exc:
             # Log?  simple print to avoid circular import of logger
             print(f"Failed to load tool entry-point {ep.name}: {exc}")
+
+    from ape.resources import read_resource
+    _REGISTRY["read_resource"] = {
+        "fn": read_resource,
+        "description": "Read a registry resource (conversation://*, schema://*, …)",
+        "inputSchema": {
+            "type": "object",
+            "required": ["uri"],
+            "properties": {
+                "uri": {"type": "string", "description": "Registry URI to read (e.g. conversation://recent, schema://tables)"},
+                "query": {"type": "string", "description": "Optional query parameter supported by some resources"},
+                "limit": {"type": "integer", "description": "Optional limit parameter supported by some resources"}
+            }
+        }
+    }
 
     return _REGISTRY

@@ -20,6 +20,7 @@ from .session_manager import get_session_manager
 from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 from ape.prompts import list_prompts as _list_prompts, render_prompt
 from ape.resources import list_resources as _list_resources, read_resource as _read_resource
+from ape.core.vector_memory import get_vector_memory
 
 from ape.settings import settings  # local import to avoid circular deps
 
@@ -80,7 +81,9 @@ def create_mcp_server() -> Server:
 
             schema_props = registry[name]["inputSchema"].get("properties", {})
             if schema_props:
+                logger.info(f"Sanitizing arguments: {arguments} against schema: {schema_props}")
                 arguments = {k: v for k, v in arguments.items() if k in schema_props}
+                logger.info(f"Sanitized arguments: {arguments}")
             else:
                 # No properties defined → tool expects zero arguments
                 arguments = {}
@@ -196,18 +199,6 @@ def create_mcp_server() -> Server:
             )
         return res_objs
 
-    @server.read_resource()
-    async def handle_read_resource(uri: str) -> str:
-        """Delegate to resource registry adapters."""
-        logger.info(f"📖 [MCP SERVER] Resource requested: {uri}")
-        try:
-            mime, content = await _read_resource(uri)
-            # For now return plain string; mime handling TBD
-            return content
-        except Exception as e:
-            logger.error(f"💥 [MCP SERVER] Error reading resource {uri}: {e}")
-            raise
-
     return server
 
 
@@ -222,6 +213,9 @@ def run_server():
 
     setup_logger()
     logger.info("🚀 [MCP SERVER] Starting APE MCP Server via HTTP/SSE...")
+
+    # Initialize Vector Memory
+    asyncio.run(get_vector_memory())
 
     # 1. Get the existing, fully configured MCP Server instance
     server = create_mcp_server()
@@ -258,4 +252,4 @@ def run_server():
 
 if __name__ == "__main__":
     # Run the MCP server
-    run_server() 
+    run_server()

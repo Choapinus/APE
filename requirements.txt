@@ -125,6 +125,8 @@ rpds-py==0.27.1
     #   referencing
 sniffio==1.3.1
     # via anyio
+sqlite-vec==0.1.6
+    # via ape-mcp (pyproject.toml)
 sse-starlette==3.0.2
     # via mcp
 starlette==0.48.0

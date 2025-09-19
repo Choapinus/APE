@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # LLM / Ollama
     OLLAMA_BASE_URL: HttpUrl = Field("http://localhost:11434", description="Base URL of the local Ollama server")
     LLM_MODEL: str = Field("qwen3:8b", description="Model name passed to Ollama")
+    EMBEDDING_MODEL: str = Field("embeddinggemma:latest", description="Ollama model for text embeddings")
+    EMBEDDING_SIZE: int | None = Field(None, description="Ollama embedding size")
     TEMPERATURE: float = Field(0.5, description="LLM sampling temperature")
     TOP_P: float = Field(0.9, description="Nucleus sampling parameter (probability mass)")
     TOP_K: int = Field(40, description="Top-K sampling parameter (number of candidates)")
@@ -27,7 +29,12 @@ class Settings(BaseSettings):
     SHOW_THOUGHTS: bool = Field(True, description="Whether to stream the model's <think> content")
 
     # Database
-    SESSION_DB_PATH: str = Field("ape/sessions.db", description="Path to SQLite database that stores message history")
+    SESSION_DB_PATH: str = Field("database/sessions.db", description="Path to SQLite database that stores message history")
+
+    # Vector Memory
+    VECTOR_DB_PATH: str = Field("database/vector_memory.db", description="Path to SQLite database for vector memory")
+    VECTOR_SEARCH_TOP_K: int = Field(5, description="Number of results to return from vector search")
+    VECTOR_SEARCH_RERANK: bool = Field(False, description="Enable reranking of vector search results")
 
     # Security – MUST be provided via environment or .env
     # Preferred variable name is **MCP_JWT_KEY**.  For backward compatibility the
