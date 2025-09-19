@@ -8,10 +8,11 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 
 - 🔗 **MCP Protocol Compliance**: Built with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 - 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) storage with **connection pooling**
-- 🛠️ **9+ Tools**: Database queries, resource access, conversation search, history management, error inspection and more (auto-discovered)
-- 🧠 **Multi-LLM Support**: Configurable Ollama integration with various models
+- 🛠️ **10 Tools**: Database queries, resource access, conversation search, history management, error inspection, text summarization and more (auto-discovered)
+- 🧠 **Hybrid Window Memory**: Intelligent context management with on-overflow summarisation to stay within token limits.
+- 🤖 **Multi-LLM Support**: Configurable Ollama integration with various models
 - 🧮 **Token & Generation Controls**: Live token budgeting plus configurable temperature / top-p / top-k
-- 🔒 **HS256-Signed JWT Results**: Each tool response is wrapped in a tamper-proof JWT (`MCP_JWT_KEY`, legacy `MCP_HMAC_KEY`)
+- 🔒 **HS256-Signed JWT Results**: Each tool response is wrapped in a tamper-proof JWT (`MCP_JWT_KEY`)
 - 🔌 **Plugin System**: Extend functionality via `ape_mcp.tools` entry-points — zero-code changes required
 - ⚙️ **pydantic-settings Configuration**: Type-safe settings that can be overridden via a simple `.env` file
 - 🎯 **CLI Interface**: Rich command-line experience with real-time tool feedback
@@ -23,7 +24,7 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 - 📚 **Import-Light API**: `import ape; agent = ape.Agent(...)` – CLI extras no longer pulled in automatically
 - 🛡️ **Structured Error Bus**: `tool_errors` table + `errors://recent` resource
 - 🚨 **/errors Command**: Inspect per-session tool failures straight from the CLI
-- 🤝 **Agent-to-Agent (A2A) Delegation**: `call_agent` tool planned for sub-task spawning
+- 🤝 **Agent-to-Agent (A2A) Simulation**: Includes a simulation of multi-agent collaboration (`a2a_simulation.py`). A dedicated `call_agent` tool for direct sub-task delegation is a planned future enhancement.
 
 ## 🚀 Quick Start
 
@@ -58,54 +59,45 @@ brew install ollama
 **Windows:**
 Download from [ollama.ai](https://ollama.ai/download)
 
-#### 3. Pull Required LLM Model
+#### 3. Pull an LLM Model
 
 ```bash
 # Start Ollama service
 ollama serve
 
-# In another terminal, pull the default model
-ollama pull qwen3:14b
-
-# Or use a lighter model for testing
+# In another terminal, pull a recommended model
 ollama pull qwen3:8b
 ```
 
-#### 4. Install Python Dependencies
+#### 4. Install APE
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd ape
 
-# Install core library (minimal runtime deps)
-pip install .
-
-# Optional extras
-#   llm     → ollama + transformers
-#   images  → Pillow for image manipulation
-#   cli     → prompt_toolkit for fancy input
-#   dev     → testing & formatting tools
-
-# Example: full interactive install
+# Install core library and all extras for a full interactive experience
 pip install ".[llm,images,cli]"
 
-# Development setup
-pip install -e .[dev,llm,cli]
+# For development (includes testing tools):
+pip install -e ".[dev,llm,cli]"
 ```
 
 ### Running APE
 
-#### Start the CLI Chat Interface
+#### 1. Set the JWT Secret Key
+For security, tool results are signed. You must set a secret key as an environment variable.
+
+```bash
+# Generate and export a strong secret key
+export MCP_JWT_KEY=$(openssl rand -hex 16)
+```
+Alternatively, you can add this key to a `.env` file in the project root.
+
+#### 2. Start the CLI Chat Interface
 
 ```bash
 python cli_chat.py
-```
-
-#### Test MCP Server Functionality
-
-```bash
-python test_mcp.py
 ```
 
 #### Available CLI Commands
@@ -117,7 +109,8 @@ Once in the chat interface:
 - `/session` - Show current session information
 - `/tools` - List available MCP tools
 - `/context` - Display current session context
-- `/errors`  - Show recent **per-session** tool errors (no cross-agent noise)
+- `/errors`  - Show recent **per-session** tool errors
+- `/memory` - Show WindowMemory summary & stats
 - `/clear` - Clear screen
 - `/reset` - Reset session context
 - `/quit` - Exit the application
@@ -128,71 +121,43 @@ Once in the chat interface:
 ape/
 ├── ape/                          # Core package
 │   ├── settings.py               # Configuration settings
-│   ├── session.py                # Session management
-│   ├── db_pool.py               # aiosqlite connection pool
+│   ├── db_pool.py                # aiosqlite connection pool
+│   ├── core/
+│   │   ├── agent_core.py         # Core agent logic
+│   │   └── memory.py             # WindowMemory implementation
 │   ├── mcp/                      # MCP implementation
 │   │   ├── server.py             # MCP server with tool definitions
 │   │   ├── implementations.py    # Tool implementation functions
-│   │   └── session_manager.py   # Async Session management
-│   ├── cli_chat.py                   # Main CLI interface (primary entry point)
-│   ├── mcp_server.py                 # MCP server entry point
-│   ├── tests/                        # Test suite
-│   │   ├── unit/                     # Unit tests
-│   │   └── integration/              # Integration tests
-│   ├── requirements.txt              # Python dependencies
-│   ├── docs/                         # Markdown documentation & guides
-│   ├── findings/                     # Design reviews and technical notes
-│   └── logs/                         # Application logs
+│   │   └── session_manager.py    # Async Session management
+│   ├── cli/
+│   │   └── chat_agent.py         # CLI-specific agent logic
+│   └── prompts/
+│       └── templates/            # Jinja2 prompt templates
+├── cli_chat.py                   # Main CLI interface (primary entry point)
+├── tests/                        # Test suite
+├── pyproject.toml                # Project definition and dependencies
+├── docs/                         # Markdown documentation & guides
+└── logs/                         # Application logs
 ```
-
-### Core Components
-
-#### **CLI Interface** (`cli_chat.py`)
-- **ContextManager**: Tracks tool results and session context
-- **APEChatCLI**: Main chat interface with MCP integration
-- **Real-time tool execution** with visual feedback
-- **Dynamic system prompts** based on available capabilities
-
-#### **MCP Server** (`ape/mcp/`)
-- **Protocol-compliant server** using official SDK
-- **8 registered tools** for conversation and database management
-- **Resource and prompt management** capabilities
-- **Proper error handling** and logging
-
-#### **Session Management** (`ape/mcp/session_manager.py`)
-- **Asynchronous SQLite (aiosqlite) persistence** via connection pool (`db_pool.py`)
-- **JSON serialization** for complex data types
-- **Concurrent-safe operations** with WAL mode
 
 ## 🛠️ MCP Tools & Capabilities
 
 APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompts**:
 
-### 🔧 Available Tools (8)
+### 🔧 Available Tools (10)
 
-| Tool | Description | Use Case |
-|------|-------------|----------|
-| `execute_database_query` | Execute SQL queries (SELECT/INSERT/UPDATE/DELETE) | Database operations and analytics |
-| `get_conversation_history` | Retrieve conversation history by session | Context retrieval and review |
-| `get_database_info` | Database schema and statistics | System introspection |
-| `search_conversations` | Full-text search across conversations | Finding specific discussions |
-| `list_available_tools` | Tool introspection and capabilities | Understanding available functionality |
-| `get_last_N_user_interactions` | Recent user messages | Understanding user patterns |
-| `get_last_N_tool_interactions` | Recent tool usage | Tool usage analytics |
-| `get_last_N_agent_interactions` | Recent AI responses | Response quality analysis |
-| `read_resource` | Read any registry resource by URI (`conversation://*`, `schema://*`, …) | Access conversation snapshots, DB schema, etc. |
-
-### 📊 Resources
-
-- **Session data**: Persistent conversation storage
-- **Tool results**: Cached execution results with metadata
-- **Context data**: Extracted values and session analytics
-
-### 💬 Prompts
-
-- **Dynamic system prompts**: Generated based on available tools and context
-- **Interactive templates**: Context-aware conversation starters
-- **Tool-specific prompts**: Optimized for different tool categories
+| Tool | Description |
+|------|-------------|
+| `execute_database_query` | Execute read-only SQL SELECT queries on the conversation DB. |
+| `get_conversation_history` | Retrieve conversation history by session. |
+| `get_database_info` | Get database schema and table statistics. |
+| `search_conversations` | Full-text search across all conversations. |
+| `list_available_tools` | List all discoverable MCP tools. |
+| `get_last_N_user_interactions` | Get the last N messages from the user. |
+| `get_last_N_tool_interactions` | Get the last N tool call results. |
+| `get_last_N_agent_interactions` | Get the last N responses from the AI. |
+| `read_resource` | Read any registry resource by URI (`conversation://*`, `schema://*`, …). |
+| `summarize_text` | Return a concise summary of the provided text. |
 
 ## ⚙️ Configuration
 
@@ -201,41 +166,31 @@ APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompt
 APE relies on `pydantic-settings`; every field below can be overridden with environment variables or a `.env` file at the repository root.
 
 ```python
-# Defaults as of June 2025
+# Defaults
 PORT = 8000                      # MCP server port
-LOG_LEVEL = "INFO"               # Runtime verbosity – DEBUG spam is now confined to logs
-OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL
+LOG_LEVEL = "DEBUG"
+MCP_SERVER_URL = "http://localhost:8000"
+OLLAMA_BASE_URL = "http://localhost:11434"
 LLM_MODEL = "qwen3:8b"           # Default model pulled via Ollama
-TEMPERATURE = 0.5                # Sampling temperature
-MAX_TOOLS_ITERATIONS = 15        # Max reasoning/tool loops per prompt
-TOP_P = 0.9                      # Nucleus sampling (probability mass)
-TOP_K = 40                       # Top-K sampling (candidate pool)
-UI_THEME = "dark"                # CLI theme (dark/light)
-SHOW_THOUGHTS = True             # Stream <think> content from the LLM
-MCP_JWT_KEY = "dev-secret"      # Shared secret for tool-result signatures
-SESSION_DB_PATH = "ape/sessions.db"  # SQLite conversation store
+TEMPERATURE = 0.5
+MAX_TOOLS_ITERATIONS = 15
+TOP_P = 0.9
+TOP_K = 40
+MCP_JWT_KEY = ""      # MUST be set via env or .env
+SESSION_DB_PATH = "ape/sessions.db"
+SUMMARY_MAX_TOKENS = 128
+CONTEXT_MARGIN_TOKENS = 1024     # Safety buffer for memory pruning
 ```
 
-### Optional Environment Variable Overrides
+### Example `.env` Overrides
 
 ```bash
-# Example .env / shell overrides
-LLM_MODEL=qwen3:14b               # Use a larger model
+# .env
+LLM_MODEL=qwen3:14b
 TEMPERATURE=0.3
-TOP_P=0.95
-TOP_K=50
 MAX_TOOLS_ITERATIONS=20
-MCP_JWT_KEY=$(openssl rand -hex 16)  # Strong key for production
+MCP_JWT_KEY=your-super-secret-key-here
 ```
-
-### Supported LLM Models
-
-APE has been tested with various Ollama models:
-
-- **qwen3:14b** (recommended) - Best balance of capability and performance
-- **qwen3:8b** - Lighter alternative with good tool usage
-- **llama3.1** - Tools capable but more rigid
-- **gemma3:4b** - Lighter model with basic functionality. Only tested with `PetrosStav/gemma3-tools:4b`
 
 ## 🧪 Testing
 
@@ -248,89 +203,71 @@ pytest tests/
 # Specific modules
 pytest tests/unit/test_mcp_server.py
 pytest tests/unit/test_chat_functionality.py
-pytest tests/integration/
-
-# Quick MCP connectivity check
-python test_mcp.py
 ```
 
 ## 🔧 Development
 
 ### Adding New Tools
 
-1. **Define tool schema** in `ape/mcp/server.py`:
+New tools can be added by applying the `@tool` decorator from `ape.mcp.plugin` to an asynchronous function and making it discoverable via the `ape_mcp.tools` entry-point in `pyproject.toml`.
+
 ```python
-types.Tool(
-    name="your_tool_name",
-    description="Tool description",
-    inputSchema={
+# my_package/my_tools.py
+from ape.mcp.plugin import tool
+
+@tool(
+    "my_new_tool",
+    "A brief description of what my new tool does.",
+    {
         "type": "object",
         "properties": {
-            "param": {"type": "string", "description": "Parameter description"}
+            "param1": {"type": "string", "description": "First parameter"},
         },
-        "required": ["param"]
+        "required": ["param1"]
     }
 )
+async def my_new_tool_impl(param1: str) -> str:
+    return f"Tool executed with {param1}"
 ```
 
-2. **Implement function** in `ape/mcp/implementations.py`:
-```python
-async def your_tool_name_impl(param: str) -> str:
-    # Implementation here
-    return result
-```
+## 🗄️ Database Schema
 
-3. **Register handler** in `ape/mcp/server.py`:
-```python
-elif name == "your_tool_name":
-    result = await your_tool_name_impl(arguments.get("param"))
-    return [types.TextContent(type="text", text=result)]
-```
+The system uses three tables in its SQLite database (`sessions.db`):
 
-### Database Schema
-
-The system uses a simple but effective SQLite schema:
-
+**1. `history`**: Stores all messages for every session.
 ```sql
 CREATE TABLE history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
-    role TEXT NOT NULL,           -- 'user', 'assistant', 'system'
+    role TEXT NOT NULL,           -- 'user', 'assistant', 'system', or 'tool'
     content TEXT NOT NULL,
     images TEXT,                  -- JSON serialized image data
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-## 📖 Documentation
+**2. `tool_errors`**: A structured log of every tool execution failure.
+```sql
+CREATE TABLE tool_errors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    tool TEXT NOT NULL,
+    arguments TEXT,               -- JSON serialized arguments
+    error TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
 
-- [Model Context Protocol Documentation](https://github.com/modelcontextprotocol/python-sdk)
-- [MCP Specification](https://spec.modelcontextprotocol.io/)
-- [Ollama Documentation](https://ollama.ai/docs)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Run the test suite: `pytest tests/`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) - The official Python SDK that powers our MCP implementation
-- [Ollama](https://ollama.ai/) - Local LLM inference engine
-- [Loguru](https://github.com/Delgan/loguru) - Elegant logging solution
-
----
-
-**APE - Bringing conversational AI to the next level with the Model Context Protocol** 🚀
+**3. `summaries`**: Records summarization events from the windowed memory.
+```sql
+CREATE TABLE summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    original_messages TEXT NOT NULL, -- JSON serialized list of messages
+    summary_text TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 ## Architecture Overview
 
@@ -342,13 +279,11 @@ graph TD
   subgraph Agent
     ChatAgent
     ContextManager
-    TokenCounter
-    RateLimiter["Rate Limiter"]
+    WindowMemory["Window Memory"]
   end
   CLI --> ChatAgent
   ChatAgent --> ContextManager
-  ContextManager --> TokenCounter
-  ContextManager --> RateLimiter
+  ChatAgent --> WindowMemory
   ChatAgent -->|"LLM"| Ollama[("Ollama Server")]
 
   subgraph MCP
@@ -364,79 +299,21 @@ graph TD
     MCPServer --> ResourceRegistry
     ToolRegistry --> BuiltinTools["Builtin Tools"]
     ToolRegistry --> ExternalPlugins["External Plugins"]
-    ToolRegistry --> SummarizeTool["summarize_session Tool"]
-    PromptRegistry --> PromptRepo["Prompt Files (.prompt)"]
-    PromptRegistry --> PromptPlugins["Entry-Point Prompts"]
-    ResourceRegistry --> ResourceAdapters["Resource Adapters"]
-    ResourceRegistry --> ResourcePlugins["Entry-Point Adapters"]
-    ResourceRegistry --> MemoryResource["Memory Resource"]
-    ResourceRegistry --> ErrorResource["ErrorLog Resource"]
     MCPServer --> SessionManager
     SessionManager -->|"async"| DBPool["aSQLite Pool"]
     DBPool --> SQLiteDB[("sessions.db")]
   end
-
-  subgraph Memory["Memory Layer"]
-    EmbeddingIndex[("FAISS / Chroma Index")]
-  end
-  ContextManager --> EmbeddingIndex
-  MemoryResource --> EmbeddingIndex
 ```
 
-### Current Status (June 2025)
+### Current Status
 
-* **Configuration**: migrated to `pydantic-settings` (`ape/settings.py`). `.env` overrides supported.
-* **CLI**: split into thin shell, `MCPClient`, `ChatAgent`, `ContextManager`.
-* **Tools**: data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`).
-* **Integrity**: MCP server wraps every tool result in an HMAC-signed envelope; `ChatAgent` verifies.
-* **Token budgeting**: agent counts tokens live and warns on context overflow; *hybrid summarisation policy* (overflow-only) scheduled.
-* **Prompt registry**: Implemented – prompt templates (`*.prompt.md`) now reside in `ape/prompts/templates/`, loaded via Jinja2, hot-reloaded, and exposed through MCP.
-* **Resource registry**: Implemented – access conversation & DB schema data via `conversation://*` and `schema://*` URIs; discoverable through MCP `list_resources`.
-* **Memory roadmap**: `AgentMemory` abstraction + `WindowMemory` implementation in progress; vector memory slated for next milestone.
-* **Persistence**: migrated to asynchronous `aiosqlite` for non-blocking DB operations.
+* **Configuration**: Migrated to `pydantic-settings` (`ape/settings.py`). `.env` overrides supported.
+* **CLI**: Split into thin shell, `MCPClient`, `ChatAgent`, `ContextManager`.
+* **Tools**: Data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`).
+* **Integrity**: MCP server wraps every tool result in a **JWT-signed** envelope; `ChatAgent` verifies.
+* **Token budgeting**: Agent uses a `WindowMemory` implementation with on-overflow summarization to manage context size.
+* **Prompt registry**: Implemented – prompt templates (`*.prompt.md`) are loaded via Jinja2 and exposed through MCP.
+* **Resource registry**: Implemented – access conversation & DB schema data via `conversation://*` and `schema://*` URIs.
+* **Persistence**: Migrated to asynchronous `aiosqlite` for non-blocking DB operations.
 
 > For detailed roadmap and open tasks see `docs/ROADMAP.md` (TBD).
-
-### Quick-start
-
-```bash
-# 1. clone and enter
-git clone https://github.com/your-org/ape.git
-cd ape
-
-# 2. create virtualenv
-python -m venv .venv && source .venv/bin/activate
-
-# 3. install deps
-pip install -r requirements.txt
-
-# 4. ensure an Ollama model is pulled (example)
-ollama pull qwen3:8b
-
-# 5. export a strong shared secret for JWT signing (prod)
-export MCP_JWT_KEY=$(openssl rand -hex 16)
-
-# 6. launch chat
-python cli_chat.py
-```
-
-### Configuration via `.env`
-The project reads configuration from environment variables using `pydantic-settings`.
-Create a local `.env` file at the repo root; any value there overrides the defaults.
-
-```
-# .env (example)
-PORT=8080
-LOG_LEVEL=INFO
-OLLAMA_BASE_URL=http://localhost:11434
-LLM_MODEL=qwen3:14b
-TEMPERATURE=0.3
-TOP_P=0.95
-TOP_K=50
-MAX_TOOLS_ITERATIONS=20
-MCP_JWT_KEY=changeme-super-secret
-```
-
-Run `python - <<'PY'
-from ape.settings import settings; print(settings.model_dump_json(indent=2))
-PY` to view the final merged configuration at runtime.
