@@ -140,20 +140,42 @@ class APEChatCLI:
                     return
                 
                 try:
-                    history = json.loads(history_text)
+                    logger.debug(f"Raw history_text: {history_text}")
+                    envelope = json.loads(history_text)
+                    logger.debug(f"Decoded envelope: {envelope}")
+                    payload_str = envelope.get('payload')
+                    if not payload_str:
+                        raise ValueError("Missing 'payload' in tool response")
+                    logger.debug(f"Payload string: {payload_str}")
+
+                    tool_result = json.loads(payload_str)
+                    logger.debug(f"Decoded tool_result: {tool_result}")
+                    history = tool_result.get('result')
+                    logger.debug(f"Final history object: {history}")
+                    logger.debug(f"Type of history object: {type(history)}")
+
+                    if not isinstance(history, list):
+                         # If history is not a list, it might be an error message string
+                         print(f"Received from tool: {history}")
+                         return
+
                     print(f"\n📚 Last {len(history)} messages:")
                     print("-" * 50)
                     
                     for msg in history:
-                        role_icon = "👤" if msg["role"] == "user" else "🤖"
-                        timestamp = msg["timestamp"][:19] if msg["timestamp"] else "unknown"
-                        content = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
-                        print(f"{role_icon} [{timestamp}] {content}")
+                        logger.debug(f"Processing message: {msg}")
+                        logger.debug(f"Type of message: {type(msg)}")
+                        role_icon = "👤" if msg.get("role") == "user" else "🤖"
+                        timestamp = msg.get("timestamp", "unknown")[:19]
+                        content = msg.get("content", "")
+                        content_preview = content[:100] + "..." if len(content) > 100 else content
+                        print(f"{role_icon} [{timestamp}] {content_preview}")
                     
                     print("-" * 50)
                     
-                except json.JSONDecodeError:
-                    print("📚 Recent conversation history:")
+                except (json.JSONDecodeError, TypeError, AttributeError, ValueError) as e:
+                    logger.error(f"Error parsing history response: {e}\nRaw response: {history_text}")
+                    print("📚 Recent conversation history (raw):")
                     print(history_text)
             else:
                 print("📭 No conversation history yet.")

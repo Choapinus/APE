@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from pydantic import BaseModel, Field
 
@@ -56,7 +56,7 @@ class GenericTextResponse(BaseModel):
 class ToolCall(BaseModel):
     """Represents a request issued by the agent / LLM to call a tool."""
 
-    name: str = Field(..., description="Registered tool name (unique id)")
+    tool: str = Field(..., description="Registered tool name (unique id)")
     arguments: dict = Field(default_factory=dict, description="JSON-serialisable arguments object")
 
 
@@ -71,7 +71,7 @@ class ToolResult(BaseModel):
 
     tool: str = Field(..., description="Tool name that produced the result")
     arguments: dict = Field(default_factory=dict, description="Arguments that were passed to the tool")
-    result: str = Field(..., description="Raw result payload – often JSON or plain text")
+    result: Any = Field(..., description="Raw result payload – often JSON or plain text")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

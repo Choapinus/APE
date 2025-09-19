@@ -86,13 +86,20 @@ def create_mcp_server() -> Server:
                 arguments = {}
 
             impl_fn = registry[name]["fn"]
-            result_text = await impl_fn(**arguments)
+            result_from_impl = await impl_fn(**arguments)
+
+            try:
+                # Try to parse it as JSON, so it gets embedded as an object/array
+                result_data = json.loads(result_from_impl)
+            except (json.JSONDecodeError, TypeError):
+                # If it's not JSON, treat it as a plain string
+                result_data = result_from_impl
 
             # Wrap successful result in a ToolResult and HMAC-signed envelope
             payload_str = ToolResult(
                 tool=name,
                 arguments=arguments,
-                result=result_text,
+                result=result_data,
             ).model_dump_json()
             rid = str(uuid4())
             envelope = {
