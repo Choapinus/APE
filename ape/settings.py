@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # General settings
     PORT: int = Field(8000, description="HTTP port for MCP server")
     LOG_LEVEL: str = Field("DEBUG", description="Root log level for Loguru")
+    MCP_SERVER_URL: HttpUrl = Field("http://localhost:8000", description="URL of the APE MCP server")
 
     # LLM / Ollama
     OLLAMA_BASE_URL: HttpUrl = Field("http://localhost:11434", description="Base URL of the local Ollama server")

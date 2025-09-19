@@ -86,13 +86,20 @@ def create_mcp_server() -> Server:
                 arguments = {}
 
             impl_fn = registry[name]["fn"]
-            result_text = await impl_fn(**arguments)
+            result_from_impl = await impl_fn(**arguments)
+
+            try:
+                # Try to parse it as JSON, so it gets embedded as an object/array
+                result_data = json.loads(result_from_impl)
+            except (json.JSONDecodeError, TypeError):
+                # If it's not JSON, treat it as a plain string
+                result_data = result_from_impl
 
             # Wrap successful result in a ToolResult and HMAC-signed envelope
             payload_str = ToolResult(
                 tool=name,
                 arguments=arguments,
-                result=result_text,
+                result=result_data,
             ).model_dump_json()
             rid = str(uuid4())
             envelope = {
@@ -204,35 +211,51 @@ def create_mcp_server() -> Server:
     return server
 
 
-async def run_server():
-    """Run the MCP server."""
-    # ensure sinks configured
-    setup_logger()
+def run_server():
+    """Run the MCP server via HTTP/SSE."""
+    import uvicorn
+    from starlette.applications import Starlette
+    from starlette.routing import Route, Mount
+    from starlette.responses import Response
+    from starlette.requests import Request
+    from mcp.server.sse import SseServerTransport
 
-    logger.info("🚀 [MCP SERVER] Starting APE MCP Server...")
-    
+    setup_logger()
+    logger.info("🚀 [MCP SERVER] Starting APE MCP Server via HTTP/SSE...")
+
+    # 1. Get the existing, fully configured MCP Server instance
     server = create_mcp_server()
-    logger.info("⚙️ [MCP SERVER] Server created with tools and resources configured")
-    
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        logger.info("📡 [MCP SERVER] STDIO streams established, server ready for connections")
-        
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="ape-server",
-                server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
-        
-        logger.info("🛑 [MCP SERVER] Server shutdown")
+
+    # 2. Create an SSE transport, telling it where to expect POST messages
+    sse_transport = SseServerTransport("/mcp/messages")
+
+    # 3. Define the main ASGI handler that connects the transport to the server
+    async def handle_sse_connection(scope, receive, send):
+        async with sse_transport.connect_sse(scope, receive, send) as streams:
+            await server.run(
+                streams[0],
+                streams[1],
+                server.create_initialization_options(),
+            )
+        # Required by Starlette to have a response
+        return Response(status_code=204)
+
+    async def sse_endpoint(request: Request):
+        return await handle_sse_connection(request.scope, request.receive, request._send)
+
+    # 4. Create a Starlette app to host the SSE endpoints
+    #    GET /mcp/sse - The client connects here to start the event stream.
+    #    POST /mcp/messages/{session_id} - The client sends messages here.
+    app = Starlette(routes=[
+        Route("/mcp/sse", endpoint=sse_endpoint, methods=["GET"]),
+        Mount("/mcp/messages", app=sse_transport.handle_post_message),
+    ])
+
+    # 5. Run the app with uvicorn
+    logger.info(f"📡 [MCP SERVER] Starting HTTP server on port {settings.PORT}...")
+    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)
 
 
 if __name__ == "__main__":
     # Run the MCP server
-    asyncio.run(run_server()) 
+    run_server() 

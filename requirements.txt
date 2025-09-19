@@ -43,3 +43,6 @@ pyyaml>=6.0
 
 # JWT signing/verification
 PyJWT>=2.8.0
+
+torch
+prompt_toolkit

@@ -81,7 +81,7 @@ def get_ollama_model_info(model_name: str | None = None) -> dict:
     Returns
     -------
     dict
-        Canonical structure::
+        Canonical structure:: 
 
             {
               "model": "qwen3:8b",
@@ -112,7 +112,8 @@ def get_ollama_model_info(model_name: str | None = None) -> dict:
         ) from exc
 
     try:
-        raw = ollama.show(model_name)
+        client = ollama.Client(host=str(settings.OLLAMA_BASE_URL))
+        raw = client.show(model_name)
     except Exception as exc:
         raise RuntimeError(f"Failed to fetch model info for '{model_name}': {exc}") from exc
 
