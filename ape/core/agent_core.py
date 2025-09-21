@@ -55,6 +55,30 @@ class AgentCore:
             logger.warning(f"WindowMemory disabled: {exc}")
             self.memory = None
 
+    def get_agent_card(self) -> Dict[str, Any]:
+        """Return a dictionary with the agent's configuration and state."""
+        card = {
+            "agent_name": self.agent_name,
+            "session_id": self.session_id,
+            "role_definition": self.role_definition,
+            "context_limit": self.context_limit,
+            "model_info": getattr(self, 'model_info', {}),
+            "settings": {
+                "LLM_MODEL": settings.LLM_MODEL,
+                "SHOW_THOUGHTS": settings.SHOW_THOUGHTS,
+                "TEMPERATURE": settings.TEMPERATURE,
+                "TOP_P": settings.TOP_P,
+                "TOP_K": settings.TOP_K,
+            }
+        }
+        if self.memory:
+            card["memory"] = {
+                "class": self.memory.__class__.__name__,
+                "tokens": self.memory.tokens(),
+                "summary_length": len(self.memory.summary) if hasattr(self.memory, 'summary') else 0,
+            }
+        return card
+
     async def refresh_context_window(self) -> None:
         """A capability that allows the agent to clear its own short-term memory.
 
@@ -404,15 +428,20 @@ class AgentCore:
             has_tool_calls = False
 
             try:
+                logger.info(f"Thinking from settings: {settings.SHOW_THOUGHTS}")
                 stream = await client.chat(
                     model=settings.LLM_MODEL,
                     messages=exec_conversation,
                     tools=tools_spec,
                     options={"temperature": settings.TEMPERATURE,
                              "top_p": settings.TOP_P,
-                             "top_k": settings.TOP_K},
+                             "top_k": settings.TOP_K,
+                            },
+                    think=settings.SHOW_THOUGHTS,
                     stream=True,
                 )
+
+                
             except Exception as first_exc:
                 # Some models error (HTTP 500) when a tools payload is present –
                 # retry once without tools to keep basic chat working.
@@ -422,11 +451,17 @@ class AgentCore:
                     messages=exec_conversation,
                     options={"temperature": settings.TEMPERATURE,
                              "top_p": settings.TOP_P,
-                             "top_k": settings.TOP_K},
+                             "top_k": settings.TOP_K,
+                            },
+                    think=settings.SHOW_THOUGHTS,
                     stream=True,
                 )
 
             async for chunk in stream:
+                if thinking := chunk.get("thinking"):
+                    if stream_callback:
+                        stream_callback(thinking)
+
                 if "message" not in chunk:
                     continue
                 msg = chunk["message"]

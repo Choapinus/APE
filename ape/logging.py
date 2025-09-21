@@ -14,7 +14,6 @@ from ape.settings import settings
 
 _INITIALISED = False
 
-
 def setup_logger(
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None
 ) -> None:
@@ -49,4 +48,4 @@ def setup_logger(
     logger.level(level)
     logger.info("Logger initialised (level: {})", level)
 
-    _INITIALISED = True 
+    _INITIALISED = True

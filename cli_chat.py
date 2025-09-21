@@ -6,6 +6,14 @@ A command-line interface that uses the official MCP Python SDK to connect to the
 This demonstrates proper MCP client/server communication.
 """
 
+# ---------------------------------------------------------------------------
+# Load .env before any other application code so that pydantic-settings
+# picks up the correct environment variables.
+# ---------------------------------------------------------------------------
+from dotenv import load_dotenv
+load_dotenv()
+# ---------------------------------------------------------------------------
+
 import asyncio
 import sys
 import uuid
@@ -714,6 +722,8 @@ The agent will use its natural reasoning to break down complex tasks!
             return
 
         await self.chat_agent.initialize()
+        agent_card = self.chat_agent.get_agent_card()
+        logger.debug(f"Agent card:\n{pprint.pformat(agent_card)}")
         
         try:
             while True:

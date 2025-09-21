@@ -55,29 +55,16 @@ class ChatAgent(AgentCore):
             Role definition for the agent.
         """
 
-        # ------------------------------------------------------------------
-        # Cache Ollama model metadata *before* initialising AgentCore so the
-        # correct context window size is available during WindowMemory setup.
-        # ------------------------------------------------------------------
-        try:
-            self.model_info = get_ollama_model_info(settings.LLM_MODEL)
-            ctx_limit: int | None = self.model_info.get("context_length")  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.warning(f"Could not retrieve model info: {exc}")
-            self.model_info = {}
-            ctx_limit = None
-
         super().__init__(
             session_id=session_id,
             mcp_client=mcp_client,
             context_manager=context_manager,
             agent_name=agent_name,
             role_definition=role_definition,
-            context_limit=ctx_limit,
+            context_limit=None,  # Will be set in initialize
         )
 
-        # Store the context limit as attribute too (may be useful elsewhere)
-        self.context_limit = ctx_limit
+        self.model_info = {}
 
         # Initialise prompt session lazily (optional dependency)
         global PromptSession  # noqa: PLW0603 – assign module-level var
@@ -91,6 +78,16 @@ class ChatAgent(AgentCore):
         self.prompt: Optional["PromptSession"] = PromptSession() if PromptSession else None
 
     async def initialize(self):
+        """Fetch model info and then initialize memory."""
+        try:
+            self.model_info = await get_ollama_model_info(settings.LLM_MODEL)
+            self.context_limit: int | None = self.model_info.get("context_length")
+        except Exception as exc:
+            logger.warning(f"Could not retrieve model info: {exc}")
+            self.model_info = {}
+            self.context_limit = None
+
+        # Now that we have the context limit, we can initialize the parent
         await super().initialize()
 
     # ------------------------------------------------------------------
