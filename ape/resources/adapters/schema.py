@@ -36,7 +36,7 @@ class SchemaAdapter(ResourceAdapter):
                     tables = [r[0] for r in rows]
             return "application/json", json.dumps(tables)
 
-        if uri.startswith("schema://") and uri.endswith("/columns"):
+        elif uri.startswith("schema://") and uri.endswith("/columns"):
             table = uri[len("schema://") : -len("/columns")]
             async with aiosqlite.connect(DB_PATH) as conn:
                 async with conn.execute(f"PRAGMA table_info({table})") as cur:

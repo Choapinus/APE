@@ -19,16 +19,19 @@ import importlib
 from pathlib import Path
 import re
 from importlib.metadata import entry_points  # NEW
+from urllib.parse import urlparse, parse_qs
+from loguru import logger
 
 REGISTRY: Dict[str, "ResourceAdapter"] = {}
 
 
 class ResourceMeta:
-    def __init__(self, uri: str, name: str, description: str, type_: str = "text") -> None:
+    def __init__(self, uri: str, name: str, description: str, type_: str = "text", parameters: dict | None = None) -> None:
         self.uri = uri
         self.name = name
         self.description = description
         self.type = type_
+        self.parameters = parameters or {}
 
     def to_dict(self) -> dict:
         return {
@@ -36,6 +39,7 @@ class ResourceMeta:
             "name": self.name,
             "description": self.description,
             "type": self.type,
+            "parameters": self.parameters,
         }
 
 
@@ -49,6 +53,10 @@ class ResourceAdapter:
 
     async def read(self, uri: str, **query) -> Tuple[str, str]:
         """Return (mime_type, content).  Must be implemented by subclass."""
+        raise NotImplementedError
+
+    async def write(self, uri: str, content: str, **kwargs) -> None:
+        """Write content to a resource. Must be implemented by subclass."""
         raise NotImplementedError
 
 
@@ -96,9 +104,16 @@ _discover_entrypoint_adapters()
 # ---------------------------------------------------------------------------
 
 def _match_adapter(uri: str) -> ResourceAdapter | None:
-    for pattern, adapter in REGISTRY.items():
+    # Sort patterns to prioritize specificity:
+    # 1. Fewer wildcards first
+    # 2. Longer patterns first (more specific)
+    sorted_patterns = sorted(
+        REGISTRY.items(),
+        key=lambda item: (item[0].count('*'), -len(item[0]))
+    )
+    for pattern, adapter in sorted_patterns:
         # Convert wildcard pattern to regex
-        regex = re.escape(pattern).replace(r"\*", ".*") + "$"
+        regex = re.escape(pattern).replace(r"\*", ".*")
         if re.match(regex, uri):
             return adapter
     return None
@@ -112,7 +127,21 @@ def list_resources() -> List[ResourceMeta]:
 
 
 async def read_resource(uri: str, **query) -> Tuple[str, str]:
+    logger.info(f"📖 [ResourceRegistry] Reading resource: {uri} with query: {query}")
     adapter = _match_adapter(uri)
     if not adapter:
         raise ValueError(f"No adapter found for URI pattern that matches '{uri}'")
-    return await adapter.read(uri, **query) 
+    
+    query_params = parse_qs(urlparse(uri).query)
+    kwargs = {k: v[0] for k, v in query_params.items()}
+    kwargs.update(query)
+
+    return await adapter.read(uri, **kwargs)
+
+async def write_resource(uri: str, content: str, **kwargs) -> None:
+    adapter = _match_adapter(uri)
+    if not adapter:
+        raise ValueError(f"No adapter found for URI pattern that matches '{uri}'")
+    await adapter.write(uri, content, **kwargs)
+
+__all__ = ["list_resources", "read_resource", "write_resource", "ResourceAdapter", "ResourceMeta", "register"]

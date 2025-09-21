@@ -1,11 +1,10 @@
-# Multi-stage Dockerfile for APE MCP Server and Agent
-FROM python:3.11-slim-bookworm as base
+# Final, simplified Dockerfile for APE
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
 # Install system dependencies including gosu for privilege-dropping
 RUN apt-get update && apt-get install -y \
-    build-essential \
     curl \
     gdb \
     strace \
@@ -14,8 +13,9 @@ RUN apt-get update && apt-get install -y \
     gosu \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+# Since faiss-cpu is a pure-python package, no special build steps are needed.
+RUN pip install --no-cache-dir .'[llm,cli]'
 COPY . .
 
 # Add and configure the entrypoint script

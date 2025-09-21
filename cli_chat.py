@@ -11,6 +11,7 @@ import sys
 import uuid
 import json
 import os
+import pprint
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import importlib
@@ -25,7 +26,7 @@ from ape.cli.context_manager import ContextManager
 from ape.cli.mcp_client import MCPClient
 from ape.cli.chat_agent import ChatAgent
 from ape.settings import settings
-from ape.db_pool import get_pool
+from ape.db_pool import close_all_pools
 
 # Better CLI input handling (arrow keys, history)
 try:
@@ -258,6 +259,7 @@ class APEChatCLI:
             capabilities["resources"] = [
                 {
                     "name": resource.name,
+                    "uri": resource.uri, # Added URI
                     "description": resource.description,
                     "type": resource.type
                 }
@@ -303,7 +305,7 @@ class APEChatCLI:
         resources_section = (
             "\n".join(
                 [
-                    f"• **{res['name']}** ({res['type']}): {res['description']}"
+                    f"• **{res['name']}** (`{res['uri']}`) [{res['type']}]: {res['description']}"
                     for res in capabilities["resources"]
                 ]
             )
@@ -549,7 +551,24 @@ class APEChatCLI:
                     formatted_response += f"⚠️ **ISSUE DETECTED**: {tool_result}\n"
                     formatted_response += "❗ This tool did not return valid data. Do not use invented data.\n\n"
                 else:
-                    formatted_response += f"Result: {tool_result}\n\n"
+                    try:
+                        # Attempt to decode the JWT-like envelope
+                        envelope = json.loads(tool_result)
+                        payload_str = envelope.get('payload')
+                        if not payload_str:
+                            raise ValueError("Missing 'payload' in tool response")
+                        
+                        # The payload itself is a JSON string, decode it
+                        final_data = json.loads(payload_str)
+                        
+                        # Now pretty-print the actual result object
+                        pretty_result = pprint.pformat(final_data, indent=2)
+                        formatted_response += f"Result:\n{pretty_result}\n\n"
+
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        # If anything fails, just print the raw result
+                        formatted_response += f"Result: {tool_result}\n\n"
+                    
                     has_valid_data = True
             
             # Add explicit warning if no valid data was obtained
@@ -617,10 +636,10 @@ The agent can now handle complex multi-step tasks naturally by:
 • Completing comprehensive analysis tasks
 
 Try complex requests like:
-• "Get database info, find a random session and analyze its conversation patterns"
-• "Search for recent tool usage and compare it with user activity patterns"
-• "Analyze the database structure and provide insights about conversation trends"
-• "Find the most active sessions and summarize their content"
+• \"Get database info, find a random session and analyze its conversation patterns\"
+• \"Search for recent tool usage and compare it with user activity patterns\"
+• \"Analyze the database structure and provide insights about conversation trends\"
+• \"Find the most active sessions and summarize their content\"
 
 The agent will use its natural reasoning to break down complex tasks!
 """)
@@ -693,6 +712,8 @@ The agent will use its natural reasoning to break down complex tasks!
         if not await self.connect_to_mcp():
             print("❌ Cannot continue without MCP server connection")
             return
+
+        await self.chat_agent.initialize()
         
         try:
             while True:
@@ -785,8 +806,7 @@ The agent will use its natural reasoning to break down complex tasks!
             # a manual Ctrl+C.
             # ------------------------------------------------------------------
             try:
-                pool = get_pool()
-                await pool.close()
+                await close_all_pools()
                 logger.info("🗃️  [DB POOL] All database connections closed")
             except Exception as exc:
                 logger.warning(f"[DB POOL] Error during shutdown: {exc}")
@@ -826,4 +846,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Fatal error in CLI: {e}")
         print(f"❌ Fatal error: {e}")
-        sys.exit(1) 
+        sys.exit(1)

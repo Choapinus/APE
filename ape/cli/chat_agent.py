@@ -90,6 +90,9 @@ class ChatAgent(AgentCore):
 
         self.prompt: Optional["PromptSession"] = PromptSession() if PromptSession else None
 
+    async def initialize(self):
+        await super().initialize()
+
     # ------------------------------------------------------------------
     # All helper methods (discover_capabilities, create_dynamic_system_prompt,
     # get_ollama_tools, handle_tool_calls) are now inherited from AgentCore.

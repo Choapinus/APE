@@ -150,9 +150,7 @@ class SessionManager:
     async def a_get_all_sessions(self) -> List[Dict[str, Any]]:
         """Async version of get_all_sessions using aiosqlite."""
         try:
-            from ape.db_pool import get_db
-
-            async with get_db() as conn:
+            async with get_db(settings.SESSION_DB_PATH) as conn:
                 query_ids = (
                     "SELECT session_id, COUNT(*) as message_count, "
                     "MIN(timestamp) as first_ts, MAX(timestamp) as last_ts "
@@ -181,9 +179,7 @@ class SessionManager:
     async def a_save_error(self, tool: str, arguments: dict | None, error: str, session_id: str | None = None):
         """Async version of save_error."""
         try:
-            from ape.db_pool import get_db
-
-            async with get_db() as conn:
+            async with get_db(settings.SESSION_DB_PATH) as conn:
                 await conn.execute(
                     "INSERT INTO tool_errors (session_id, tool, arguments, error) VALUES (?, ?, ?, ?)",
                     (
@@ -200,9 +196,7 @@ class SessionManager:
     async def a_save_summary(self, session_id: str, original_messages: List[Dict], summary_text: str):
         """Saves a summarization event to the database."""
         try:
-            from ape.db_pool import get_db
-
-            async with get_db() as conn:
+            async with get_db(settings.SESSION_DB_PATH) as conn:
                 await conn.execute(
                     "INSERT INTO summaries (session_id, original_messages, summary_text) VALUES (?, ?, ?)",
                     (
@@ -223,9 +217,7 @@ class SessionManager:
     async def a_get_recent_errors(self, limit: int = 20, session_id: str | None = None) -> List[Dict[str, Any]]:
         """Return recent tool errors. If *session_id* is set, filter by that session."""
         try:
-            from ape.db_pool import get_db
-
-            async with get_db() as conn:
+            async with get_db(settings.SESSION_DB_PATH) as conn:
                 base_q = "SELECT session_id, tool, arguments, error, timestamp FROM tool_errors"
                 if session_id:
                     base_q += " WHERE session_id = ?"
@@ -279,9 +271,7 @@ class SessionManager:
         already inside an event loop should prefer this coroutine.
         """
         try:
-            from ape.db_pool import get_db
-
-            async with get_db() as conn:
+            async with get_db(settings.SESSION_DB_PATH) as conn:
                 await conn.execute("DELETE FROM history WHERE session_id = ?", (session_id,))
 
                 insert_sql = (
@@ -307,9 +297,7 @@ class SessionManager:
     async def a_get_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Async version of get_history using aiosqlite."""
         try:
-            from ape.db_pool import get_db
-
-            async with get_db() as conn:
+            async with get_db(settings.SESSION_DB_PATH) as conn:
                 query = (
                     "SELECT role, content, images, timestamp "
                     "FROM history WHERE session_id = ? ORDER BY timestamp ASC"
@@ -366,4 +354,4 @@ def get_session_manager() -> SessionManager:
     global _session_manager
     if _session_manager is None:
         _session_manager = SessionManager()
-    return _session_manager 
+    return _session_manager

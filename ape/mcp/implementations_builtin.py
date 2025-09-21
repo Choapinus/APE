@@ -9,7 +9,9 @@ from ape.mcp.implementations import (
     get_last_N_user_interactions_impl,
     get_last_N_tool_interactions_impl,
     get_last_N_agent_interactions_impl,
+    memory_append_impl,
     summarize_text_impl,
+    list_available_resources_impl,
 )
 from ape.mcp.plugin import tool
 from ape.mcp.models import (
@@ -72,6 +74,10 @@ async def search_conversations(**kwargs):
 async def list_available_tools():
     return await list_available_tools_impl()
 
+@tool("list_available_resources", "List all available resources that can be read with the `read_resource` tool.", {"type": "object", "properties": {}})
+async def list_available_resources():
+    return await list_available_resources_impl()
+
 n_inter_schema = {
     "type": "object",
     "properties": {
@@ -93,6 +99,31 @@ async def last_agent_interactions(**kwargs):
     return await get_last_N_agent_interactions_impl(kwargs.get("n", 5), kwargs.get("session_id"))
 
 # ---------------------------------------------------------------------------
+# 🆕 Memory append tool
+# ---------------------------------------------------------------------------
+memory_append_schema = {
+    "type": "object",
+    "properties": {
+        "text": {
+            "type": "string",
+            "description": "The text content to embed and store."
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Optional JSON metadata to store alongside the text."
+        }
+    },
+    "required": ["text"]
+}
+
+@tool("memory_append", "Appends a text snippet to the agent's long-term vector memory for later semantic retrieval.", memory_append_schema)
+async def memory_append(**kwargs):
+    """Expose :pyfunc:`ape.mcp.implementations.memory_append_impl` via MCP."""
+    text: str = kwargs["text"]
+    metadata: dict | None = kwargs.get("metadata")
+    return await memory_append_impl(text, metadata)
+
+# ---------------------------------------------------------------------------
 # 🆕 Resource wrapper tool
 # ---------------------------------------------------------------------------
 resource_schema = {
@@ -106,24 +137,34 @@ resource_schema = {
             "type": "integer",
             "description": "Optional limit parameter supported by some resources",
             "default": 20
+        },
+        "q": {
+            "type": "string",
+            "description": "Optional query string for search-based resources."
+        },
+        "query": {
+            "type": "string",
+            "description": "Alias for 'q'."
         }
     },
     "required": ["uri"],
 }
 
 @tool("read_resource", "Read a registry resource (conversation://*, schema://*, …)", resource_schema)
-async def read_resource_tool(uri: str, limit: int | None = None):
+async def read_resource_tool(uri: str, **kwargs):
     """Expose Resource Registry via a standard tool call so the LLM can read URIs autonomously."""
-    ALLOWED_SCHEMES = ("conversation://", "schema://")
+    ALLOWED_SCHEMES = ("conversation://", "schema://", "memory://")
 
     if not any(uri.startswith(s) for s in ALLOWED_SCHEMES):
         return f"SECURITY_ERROR: URI scheme not permitted: {uri}"
 
     try:
-        if limit is not None:
-            mime, content = await _read_resource(uri, limit=limit)
-        else:
-            mime, content = await _read_resource(uri)
+        # Handle alias for query parameter
+        if "query" in kwargs and "q" not in kwargs:
+            kwargs["q"] = kwargs.pop("query")
+
+        mime, content = await _read_resource(uri, **kwargs)
+        
         # Guard: cap payload size to 64k to avoid memory abuse
         MAX_LEN = 65536
         if len(content) > MAX_LEN:

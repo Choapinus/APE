@@ -32,7 +32,12 @@ class AgentCore:
         self.context_manager = context_manager
         self.agent_name = agent_name
         self.role_definition = role_definition
+        self.context_limit = context_limit
+        self.memory = None
+        self.vector_memory = None
 
+    async def initialize(self):
+        """Initializes the memory modules."""
         # ------------------------------------------------------------------
         # M2 – Context Intelligence: initialise hybrid window memory
         # ------------------------------------------------------------------
@@ -40,12 +45,12 @@ class AgentCore:
             from ape.core.memory import WindowMemory  # local import to avoid circular deps
 
             # Prefer explicit override, fallback to attribute from subclass, then 8192
-            if context_limit is not None:
-                ctx_limit = context_limit
+            if self.context_limit is not None:
+                ctx_limit = self.context_limit
             else:
                 ctx_limit = getattr(self, "context_limit", 8192)
 
-            self.memory = WindowMemory(ctx_limit=ctx_limit, mcp_client=mcp_client, session_id=session_id)
+            self.memory = WindowMemory(ctx_limit=ctx_limit, mcp_client=self.mcp_client, session_id=self.session_id)
         except Exception as exc:  # pragma: no cover – memory must not break agent
             logger.warning(f"WindowMemory disabled: {exc}")
             self.memory = None
@@ -137,8 +142,7 @@ class AgentCore:
         try:
             resources_result = await self.mcp_client.list_resources()
             capabilities["resources"] = [
-                {"name": res.name, "description": res.description, "type": res.type}
-                for res in resources_result.resources
+                res.to_dict() for res in resources_result.resources
             ]
         except Exception:
             pass

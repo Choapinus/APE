@@ -33,6 +33,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    platform: linux/amd64
     image: ape-mcp-server # Added image name
     container_name: ape_mcp_server
     command: ["python", "mcp_server.py"]
@@ -62,9 +63,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    platform: linux/amd64
     image: ape-agent # Added unique image name
     container_name: ape_agent
-    command: ["/bin/sh", "-c", "sleep 5; python cli_chat.py"]
+    command: ["python", "cli_chat.py"]
     volumes:
       - ape_data:/app/data
       - ape_db:/app/database

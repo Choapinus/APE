@@ -16,10 +16,12 @@ from loguru import logger
 from ape.utils import setup_logger
 
 from .plugin import discover
+from . import implementations_builtin
 from .session_manager import get_session_manager
 from ape.mcp.models import ErrorEnvelope, ToolCall, ToolResult
 from ape.prompts import list_prompts as _list_prompts, render_prompt
 from ape.resources import list_resources as _list_resources, read_resource as _read_resource
+from ape.core.vector_memory import get_vector_memory
 
 from ape.settings import settings  # local import to avoid circular deps
 
@@ -80,7 +82,9 @@ def create_mcp_server() -> Server:
 
             schema_props = registry[name]["inputSchema"].get("properties", {})
             if schema_props:
+                logger.info(f"Sanitizing arguments: {arguments} against schema: {schema_props}")
                 arguments = {k: v for k, v in arguments.items() if k in schema_props}
+                logger.info(f"Sanitized arguments: {arguments}")
             else:
                 # No properties defined → tool expects zero arguments
                 arguments = {}
@@ -118,7 +122,7 @@ def create_mcp_server() -> Server:
             else:
                 err_payload = {"status": "error", "code": "UNHANDLED_EXCEPTION", "message": str(e)}
 
-            envelope = ErrorEnvelope(error=json.dumps(err_payload), tool=name, request=ToolCall(name=name, arguments=arguments))
+            envelope = ErrorEnvelope(error=json.dumps(err_payload), tool=name, request=ToolCall(tool=name, arguments=arguments))
             await get_session_manager().a_save_error(name, arguments, err_payload.get("message", str(e)), session_id=arguments.get("session_id"))
             return [types.TextContent(type="text", text=envelope.model_dump_json())]
 
@@ -197,11 +201,11 @@ def create_mcp_server() -> Server:
         return res_objs
 
     @server.read_resource()
-    async def handle_read_resource(uri: str) -> str:
+    async def handle_read_resource(uri: str, **kwargs) -> str:
         """Delegate to resource registry adapters."""
         logger.info(f"📖 [MCP SERVER] Resource requested: {uri}")
         try:
-            mime, content = await _read_resource(uri)
+            mime, content = await _read_resource(uri, **kwargs)
             # For now return plain string; mime handling TBD
             return content
         except Exception as e:
@@ -211,7 +215,7 @@ def create_mcp_server() -> Server:
     return server
 
 
-def run_server():
+async def run_server():
     """Run the MCP server via HTTP/SSE."""
     import uvicorn
     from starlette.applications import Starlette
@@ -222,6 +226,9 @@ def run_server():
 
     setup_logger()
     logger.info("🚀 [MCP SERVER] Starting APE MCP Server via HTTP/SSE...")
+
+    # Initialize Vector Memory
+    await get_vector_memory()
 
     # 1. Get the existing, fully configured MCP Server instance
     server = create_mcp_server()
@@ -252,10 +259,12 @@ def run_server():
     ])
 
     # 5. Run the app with uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=settings.PORT)
+    uv_server = uvicorn.Server(config)
     logger.info(f"📡 [MCP SERVER] Starting HTTP server on port {settings.PORT}...")
-    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)
+    await uv_server.serve()
 
 
 if __name__ == "__main__":
     # Run the MCP server
-    run_server() 
+    asyncio.run(run_server())
