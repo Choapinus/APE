@@ -20,6 +20,7 @@ from .session_manager import get_session_manager
 from ape.settings import settings
 from ape.errors import DatabaseError, ToolExecutionError
 from ape.core.vector_memory import get_vector_memory
+from ape.resources import list_resources as _list_resources
 
 # Configuration
 DB_PATH = settings.SESSION_DB_PATH
@@ -658,3 +659,13 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
         summary = " ".join(summary.split()[:-1])
 
     return summary or "(no content)"
+
+async def list_available_resources_impl() -> str:
+    """Implementation of the list_available_resources tool."""
+    logger.info("📚 [IMPL] Getting list of available resources")
+    try:
+        resources = [meta.to_dict() for meta in _list_resources()]
+        return json.dumps(resources, indent=2)
+    except Exception as e:
+        logger.error(f"❌ [IMPL] Error getting resource list: {e}")
+        raise ValueError(f"Failed to get resource list: {str(e)}")

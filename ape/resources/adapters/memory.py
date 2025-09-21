@@ -19,17 +19,29 @@ class MemoryResourceAdapter(ResourceAdapter):
         ResourceMeta(
             uri="memory://semantic_search",
             name="Semantic search over long-term memory",
-            description="Finds the top-k most relevant text snippets from the agent's long-term memory given a query string (e.g., `read_resource(uri='memory://semantic_search?q=my-query')`).",
+            description="Finds the top-k most relevant text snippets from the agent's long-term memory given a query string (e.g., `read_resource(uri='memory://semantic_search', q='my-query')`).",
             type_="application/json",
             parameters={
                 "type": "object",
                 "properties": {
                     "uri": {
                         "type": "string",
-                        "description": "The URI for the semantic search, including the query parameter 'q'. For example: memory://semantic_search?q=my-query"
+                        "description": "The URI for the semantic search: `memory://semantic_search`"
+                    },
+                    "q": {
+                        "type": "string",
+                        "description": "The search query string."
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "An alias for 'q'."
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "The number of top results to return."
                     }
                 },
-                "required": ["uri"]
+                "required": ["uri", "q"]
             }
         ),
     ]

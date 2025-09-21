@@ -6,9 +6,8 @@ set -e
 # 1. Fix ownership of directories the non-root user needs to write to.
 chown -R apeuser:apeuser /app/data
 mkdir -p /app/logs && chown -R apeuser:apeuser /app/logs
-if [ ! -d "/app/database/vector_store" ]; then
-    mkdir -p /app/database/vector_store && chown -R apeuser:apeuser /app/database
-fi
+mkdir -p /app/database/vector_memory
+chown -R apeuser:apeuser /app/database
 chown -R apeuser:apeuser /home/apeuser
 
 # 2. Ensure the shared JWT secret exists.

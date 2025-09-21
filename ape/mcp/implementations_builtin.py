@@ -11,6 +11,7 @@ from ape.mcp.implementations import (
     get_last_N_agent_interactions_impl,
     memory_append_impl,
     summarize_text_impl,
+    list_available_resources_impl,
 )
 from ape.mcp.plugin import tool
 from ape.mcp.models import (
@@ -72,6 +73,10 @@ async def search_conversations(**kwargs):
 @tool("list_available_tools", "List all available tools", {"type": "object", "properties": {}})
 async def list_available_tools():
     return await list_available_tools_impl()
+
+@tool("list_available_resources", "List all available resources that can be read with the `read_resource` tool.", {"type": "object", "properties": {}})
+async def list_available_resources():
+    return await list_available_resources_impl()
 
 n_inter_schema = {
     "type": "object",
