@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     SESSION_DB_PATH: str = Field("database/sessions.db", description="Path to SQLite database that stores message history")
 
     # Vector Memory
-    VECTOR_DB_PATH: str = Field("database/vector_memory.db", description="Path to SQLite database for vector memory")
+    VECTOR_DB_PATH: str = Field("database/vector_memory", description="Path to directory for vector memory files (FAISS index and metadata)")
     VECTOR_SEARCH_TOP_K: int = Field(5, description="Number of results to return from vector search")
     VECTOR_SEARCH_RERANK: bool = Field(False, description="Enable reranking of vector search results")
 

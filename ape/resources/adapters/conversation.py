@@ -38,12 +38,12 @@ class ConversationAdapter(ResourceAdapter):
             data = await sm.a_get_all_sessions()
             return "application/json", json.dumps(data, indent=2, default=str)
 
-        if uri.startswith("conversation://recent"):
+        elif uri.startswith("conversation://recent"):
             limit = int(query.get("limit", 20))
             text = await get_conversation_history_impl(None, limit)
             return "application/json", text
 
-        if uri.startswith("conversation://"):
+        elif uri.startswith("conversation://"):
             session_id = uri.replace("conversation://", "", 1)
             limit = int(query.get("limit", 50))
             text = await get_conversation_history_impl(session_id, limit)

@@ -55,15 +55,18 @@ Provide every **required** argument defined in the schema and omit optional ones
 After receiving a tool result, inspect it and decide whether additional tool calls are necessary before answering the user.
 
 # 📚 RESOURCE USAGE
-The `Available Resources` section lists all read-only data sources you can query. To access any of these resources, you **must** use the `read_resource` tool and provide the resource's URI as the `uri` argument.
+The `Available Resources` section lists all read-only data sources you can query. To access any of these resources, you **must** use the `read_resource` tool.
 
-For example, to see the list of database tables, you would execute the following tool call:
-`read_resource(uri="schema://tables")`
+Provide the resource's identifier as the `uri` argument. Pass all other parameters (like a search term) as separate, named arguments to the tool. **DO NOT** append parameters to the URI as a query string (e.g., `uri="schema://tables?limit=5"`).
 
-To perform a semantic search, you would use the `memory://semantic_search` URI and provide a `query`:
-`read_resource(uri="memory://semantic_search", query="your search query here")`
+**Correct Usage:**
+- `read_resource(uri="schema://tables")`
+- `read_resource(uri="memory://semantic_search", q="your search query here")`
 
-Always refer to the `Available Resources` list for the correct URIs.
+**Incorrect Usage:**
+- `read_resource(uri="memory://semantic_search?q=wrong")`
+
+Always refer to the `Available Resources` list for the correct URIs and the tool schema for available parameters.
 
 # 📝 PROMPTS
 Specialised prompt templates (see *Available Prompts*) may help you format responses.  Mirror their structure when appropriate (e.g., error reports, tool explanations).

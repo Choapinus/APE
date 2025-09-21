@@ -37,6 +37,7 @@ class VectorMemory:
 
     async def _init_db(self):
         """Initializes the FAISS index and metadata from files."""
+        os.makedirs(settings.VECTOR_DB_PATH, exist_ok=True)
         if os.path.exists(self.index_path):
             logger.info(f"Loading FAISS index from {self.index_path}")
             self.index = faiss.read_index(self.index_path)

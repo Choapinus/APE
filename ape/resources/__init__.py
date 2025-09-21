@@ -104,7 +104,14 @@ _discover_entrypoint_adapters()
 # ---------------------------------------------------------------------------
 
 def _match_adapter(uri: str) -> ResourceAdapter | None:
-    for pattern, adapter in REGISTRY.items():
+    # Sort patterns to prioritize specificity:
+    # 1. Fewer wildcards first
+    # 2. Longer patterns first (more specific)
+    sorted_patterns = sorted(
+        REGISTRY.items(),
+        key=lambda item: (item[0].count('*'), -len(item[0]))
+    )
+    for pattern, adapter in sorted_patterns:
         # Convert wildcard pattern to regex
         regex = re.escape(pattern).replace(r"\*", ".*")
         if re.match(regex, uri):

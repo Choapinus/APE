@@ -132,13 +132,21 @@ resource_schema = {
             "type": "integer",
             "description": "Optional limit parameter supported by some resources",
             "default": 20
+        },
+        "q": {
+            "type": "string",
+            "description": "Optional query string for search-based resources."
+        },
+        "query": {
+            "type": "string",
+            "description": "Alias for 'q'."
         }
     },
     "required": ["uri"],
 }
 
 @tool("read_resource", "Read a registry resource (conversation://*, schema://*, …)", resource_schema)
-async def read_resource_tool(uri: str, limit: int | None = None):
+async def read_resource_tool(uri: str, **kwargs):
     """Expose Resource Registry via a standard tool call so the LLM can read URIs autonomously."""
     ALLOWED_SCHEMES = ("conversation://", "schema://", "memory://")
 
@@ -146,10 +154,12 @@ async def read_resource_tool(uri: str, limit: int | None = None):
         return f"SECURITY_ERROR: URI scheme not permitted: {uri}"
 
     try:
-        if limit is not None:
-            mime, content = await _read_resource(uri, limit=limit)
-        else:
-            mime, content = await _read_resource(uri)
+        # Handle alias for query parameter
+        if "query" in kwargs and "q" not in kwargs:
+            kwargs["q"] = kwargs.pop("query")
+
+        mime, content = await _read_resource(uri, **kwargs)
+        
         # Guard: cap payload size to 64k to avoid memory abuse
         MAX_LEN = 65536
         if len(content) > MAX_LEN:
