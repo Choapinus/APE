@@ -29,6 +29,7 @@
 | P1 | **Done** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | Implemented in `WindowMemory` |
 | P1 | **Done** – Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | Implemented in `ape/core/memory.py` |
 | P1 | **Done** – Add MCP tool `summarize_text` (server-side) | dev-backend | Implemented and used by `WindowMemory` |
+| P1 | **Planned** – Implement a `TaskPlanner` component | dev-agent | Moves planning from the prompt into explicit code. The final approach is under discussion, exploring sequential vs. graph-based planners (e.g., potentially without heavy dependencies like LangGraph). |
 | P1 | **Planned** – Implement `call_agent` (A2A) tool with depth guard | dev-backend | spawns peer agent for sub-tasks |
 | P2 | **Done** – Plugin discovery extended to Prompts & Resources | dev-platform | entry-point groups `ape_prompts.dirs`, `ape_resources.adapters` |
 | P2 | **Done** – Extract public library API (clean `ape` facade) | dev-platform | re-export Agent, MCPClient; lazy CLI deps |
@@ -60,11 +61,14 @@
 4. **M3 – Memory-Augmented Agent (Vector)** *(Mostly Complete)*
    - ✅ Embedding store, RAG resource, and append tool are implemented.
    - ✅ Core vector memory implemented with FAISS and Ollama.
-5. **M4 – Security Hardened**
+5. **M4 – Advanced Reasoning & Planning** *(PLANNED)*
+   - Implement TaskPlanner for explicit, multi-step execution.
+   - Implement code-driven error handling and retry logic.
+6. **M5 – Security Hardened**
    - JWT-style envelopes, secret rotation, CI gate for secrets.
-6. **M5 – Community & UI**
+7. **M6 – Community & UI**
    - Prompt authoring UI, plugin marketplace, rich docs.
-7. **M6 – Research / Federation**
+8. **M7 – Research / Federation**
    - Distributed agents, online learning hooks.
 
 ## 4. Technical Notes

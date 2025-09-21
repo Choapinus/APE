@@ -55,6 +55,30 @@ class AgentCore:
             logger.warning(f"WindowMemory disabled: {exc}")
             self.memory = None
 
+    def get_agent_card(self) -> Dict[str, Any]:
+        """Return a dictionary with the agent's configuration and state."""
+        card = {
+            "agent_name": self.agent_name,
+            "session_id": self.session_id,
+            "role_definition": self.role_definition,
+            "context_limit": self.context_limit,
+            "model_info": getattr(self, 'model_info', {}),
+            "settings": {
+                "LLM_MODEL": settings.LLM_MODEL,
+                "SHOW_THOUGHTS": settings.SHOW_THOUGHTS,
+                "TEMPERATURE": settings.TEMPERATURE,
+                "TOP_P": settings.TOP_P,
+                "TOP_K": settings.TOP_K,
+            }
+        }
+        if self.memory:
+            card["memory"] = {
+                "class": self.memory.__class__.__name__,
+                "tokens": self.memory.tokens(),
+                "summary_length": len(self.memory.summary) if hasattr(self.memory, 'summary') else 0,
+            }
+        return card
+
     async def refresh_context_window(self) -> None:
         """A capability that allows the agent to clear its own short-term memory.
 
@@ -410,8 +434,11 @@ class AgentCore:
                     tools=tools_spec,
                     options={"temperature": settings.TEMPERATURE,
                              "top_p": settings.TOP_P,
-                             "top_k": settings.TOP_K},
+                             "top_k": settings.TOP_K,
+                            #  "think": settings.SHOW_THOUGHTS
+                            },
                     stream=True,
+                    think=settings.SHOW_THOUGHTS,
                 )
             except Exception as first_exc:
                 # Some models error (HTTP 500) when a tools payload is present –
@@ -422,8 +449,11 @@ class AgentCore:
                     messages=exec_conversation,
                     options={"temperature": settings.TEMPERATURE,
                              "top_p": settings.TOP_P,
-                             "top_k": settings.TOP_K},
+                             "top_k": settings.TOP_K,
+                             # "think": settings.SHOW_THOUGHTS
+                            },
                     stream=True,
+                    think=settings.SHOW_THOUGHTS,
                 )
 
             async for chunk in stream:

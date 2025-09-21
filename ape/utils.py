@@ -64,8 +64,7 @@ def count_tokens(text: str, model_name: str = "Qwen/Qwen3-8B") -> int:
     # NOTE: we do *not* add special tokens so the count reflects raw payload
     return len(tokenizer.encode(text, add_special_tokens=False))
 
-@lru_cache(maxsize=32)
-def get_ollama_model_info(model_name: str | None = None) -> dict:
+async def get_ollama_model_info(model_name: str | None = None) -> dict:
     """Return structured information about an Ollama model.
 
     The helper calls ``ollama.show`` (sync) and extracts the most
@@ -92,7 +91,6 @@ def get_ollama_model_info(model_name: str | None = None) -> dict:
               "quantization": "Q4_K_M",
               "capabilities": ["completion", "tools", "thinking"],
               "defaults": {"temperature": 0.6, "top_k": 20, ...},
-              "license": "Apache License, Version 2.0, January 2004"
             }
 
         Fields missing in the Ollama response are omitted.
@@ -112,8 +110,8 @@ def get_ollama_model_info(model_name: str | None = None) -> dict:
         ) from exc
 
     try:
-        client = ollama.Client(host=str(settings.OLLAMA_BASE_URL))
-        raw = client.show(model_name)
+        client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
+        raw = await client.show(model_name)
     except Exception as exc:
         raise RuntimeError(f"Failed to fetch model info for '{model_name}': {exc}") from exc
 
@@ -172,12 +170,12 @@ def get_ollama_model_info(model_name: str | None = None) -> dict:
     if params and isinstance(params, dict):
         info["defaults"] = params
 
-    # licence text or pointer
-    lic = raw.get("license") or details.get("license")
-    if lic:
-        # may be list of lines or long string
-        if isinstance(lic, list):
-            lic = "\n".join(lic)
-        info["license"] = lic
+    # # licence text or pointer
+    # lic = raw.get("license") or details.get("license")
+    # if lic:
+    #     # may be list of lines or long string
+    #     if isinstance(lic, list):
+    #         lic = "\n".join(lic)
+    #     info["license"] = lic
 
     return info 
