@@ -428,6 +428,7 @@ class AgentCore:
             has_tool_calls = False
 
             try:
+                logger.info(f"Thinking from settings: {settings.SHOW_THOUGHTS}")
                 stream = await client.chat(
                     model=settings.LLM_MODEL,
                     messages=exec_conversation,
@@ -435,11 +436,12 @@ class AgentCore:
                     options={"temperature": settings.TEMPERATURE,
                              "top_p": settings.TOP_P,
                              "top_k": settings.TOP_K,
-                            #  "think": settings.SHOW_THOUGHTS
                             },
-                    stream=True,
                     think=settings.SHOW_THOUGHTS,
+                    stream=True,
                 )
+
+                
             except Exception as first_exc:
                 # Some models error (HTTP 500) when a tools payload is present –
                 # retry once without tools to keep basic chat working.
@@ -450,13 +452,16 @@ class AgentCore:
                     options={"temperature": settings.TEMPERATURE,
                              "top_p": settings.TOP_P,
                              "top_k": settings.TOP_K,
-                             # "think": settings.SHOW_THOUGHTS
                             },
-                    stream=True,
                     think=settings.SHOW_THOUGHTS,
+                    stream=True,
                 )
 
             async for chunk in stream:
+                if thinking := chunk.get("thinking"):
+                    if stream_callback:
+                        stream_callback(thinking)
+
                 if "message" not in chunk:
                     continue
                 msg = chunk["message"]

@@ -723,10 +723,6 @@ The agent will use its natural reasoning to break down complex tasks!
 
         await self.chat_agent.initialize()
         agent_card = self.chat_agent.get_agent_card()
-        print("--- Agent Card ---")
-        print(json.dumps(agent_card, indent=2, default=str))
-        print("--------------------")
-        logger.info(f"Agent card: {json.dumps(agent_card, default=str)}")
         logger.debug(f"Agent card:\n{pprint.pformat(agent_card)}")
         
         try:
