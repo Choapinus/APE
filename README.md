@@ -8,8 +8,10 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 
 - 🔗 **MCP Protocol Compliance**: Built with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 - 💾 **Persistent Sessions**: Asynchronous SQLite (aiosqlite) storage with **connection pooling**
-- 🛠️ **10 Tools**: Database queries, resource access, conversation search, history management, error inspection, text summarization and more (auto-discovered)
+- 🛠️ **12 Tools**: Database queries, resource access, conversation search, history management, error inspection, text summarization and more (auto-discovered)
 - 🧠 **Hybrid Window Memory**: Intelligent context management with on-overflow summarisation to stay within token limits.
+- 🧠 **Long-Term Vector Memory**: Utilizes a FAISS vector database, allowing the agent to embed and retrieve information semantically across sessions via the `memory_append` and `read_resource` tools.
+- 🛠️ **Dynamic Resource Discovery**: A new `list_available_resources` tool allows the agent to discover available data resources at runtime, improving its autonomy and adaptability.
 - 🤖 **Multi-LLM Support**: Configurable Ollama integration with various models
 - 🧮 **Token & Generation Controls**: Live token budgeting plus configurable temperature / top-p / top-k
 - 🔒 **HS256-Signed JWT Results**: Each tool response is wrapped in a tamper-proof JWT (`MCP_JWT_KEY`)
@@ -144,7 +146,7 @@ ape/
 
 APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompts**:
 
-### 🔧 Available Tools (10)
+### 🔧 Available Tools (12)
 
 | Tool | Description |
 |------|-------------|
@@ -153,10 +155,12 @@ APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompt
 | `get_database_info` | Get database schema and table statistics. |
 | `search_conversations` | Full-text search across all conversations. |
 | `list_available_tools` | List all discoverable MCP tools. |
+| `list_available_resources`| List all available resources that can be read with the `read_resource` tool. |
 | `get_last_N_user_interactions` | Get the last N messages from the user. |
 | `get_last_N_tool_interactions` | Get the last N tool call results. |
 | `get_last_N_agent_interactions` | Get the last N responses from the AI. |
-| `read_resource` | Read any registry resource by URI (`conversation://*`, `schema://*`, …). |
+| `memory_append` | Appends a text snippet to the agent's long-term vector memory. |
+| `read_resource` | Read any registry resource by URI, passing any parameters as named arguments. |
 | `summarize_text` | Return a concise summary of the provided text. |
 
 ## ⚙️ Configuration

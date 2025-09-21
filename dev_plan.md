@@ -7,8 +7,8 @@
    - ~~Errors from tool calls are not persisted in a structured way.~~ ✅ Done via `tool_errors` table and `errors://recent` resource.
    - ~~Token counting currently requires a second Ollama call.~~ ✅ Local `TokenCounter` avoids extra Ollama request.
    - ~~Context-window trimming is manual / size-blind.~~ ✅ Sliding context-window guard implemented.
-   - No structured short-term (sliding) or long-term (vector) memory abstraction exists; makes scaling to multi-turn sessions brittle.
-   - No embeddings or RAG memory yet; retrieval would boost long-term reasoning.
+   - ~~No structured short-term (sliding) or long-term (vector) memory abstraction exists; makes scaling to multi-turn sessions brittle.~~ ✅ Implemented `AgentMemory` abstraction with `WindowMemory` and `VectorMemory`.
+   - ~~No embeddings or RAG memory yet; retrieval would boost long-term reasoning.~~ ✅ FAISS-based vector memory with Ollama embeddings now provides RAG capabilities.
    - ~~Prompts & Resources are not yet exposed via MCP endpoints.~~ ✅ Exposed via `list_prompts` / `list_resources` MCP endpoints.
    - ~~Plugin discovery only covers Tools, not Prompts/Resources.~~ ✅ Unified plugin discovery now covers all three.
    - HMAC signing is present, but key handling & expiry could be improved.
@@ -17,6 +17,7 @@
 ## 2. Immediate Objectives (📅 Sprint-0)
 | Priority | Task | Owner | Notes |
 |----------|------|-------|-------|
+| P0 | **Done** – Fix critical startup and resource handling bugs | dev-agent | Addressed circular imports, URI parsing, and parameter handling. |
 | P0 | **Done** – Introduce `TokenCounter` (local tokenizer) | dev-agent | implemented in `ape.utils.count_tokens` (uses HF `transformers`, LRU-cached) |
 | P0 | **Done** – Pydantic models formalised (`ToolCall`, `ToolResult`, `ErrorEnvelope`) | dev-backend | Implemented in `ape/mcp/models.py` and integrated server ↔ agent |
 | P0 | **Done** – External **Prompt Registry** & loader (`.prompt`/Jinja) | dev-platform | implemented in `ape.prompts` with hot-reload & MCP handlers |
@@ -24,6 +25,7 @@
 | P0 | **Done** – read_resource wrapper tool (bridge Resources → Tools) | dev-backend | allows LLM to fetch any registry resource |
 | P0 | **Done** – Central error bus + DB persistence | dev-backend | structured tool-error logging + `errors://recent` resource |
 | P0 | **Done** – `/errors` CLI command (inspect Error Bus) | dev-backend | CLI shows per-session failures |
+| P0 | **Done** – `list_available_resources` tool | dev-agent | Allows the agent to discover resources at runtime. |
 | P1 | **Done** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | Implemented in `WindowMemory` |
 | P1 | **Done** – Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | Implemented in `ape/core/memory.py` |
 | P1 | **Done** – Add MCP tool `summarize_text` (server-side) | dev-backend | Implemented and used by `WindowMemory` |
@@ -35,18 +37,15 @@
 | P3 | **Done** – ErrorLog resource `errors://recent` | dev-backend | model can inspect recent tool errors |
 | P3 | **Done** – Rate-limiting middleware | dev-platform | prevents runaway tool loops |
 | P3 | **Done** – Summarize session tool `summarize_session` | dev-agent | Existing `summarize_text` tool will be leveraged for this. |
-| P3 | Embeddings & `sqlite-vec` memory index | dev-ml | start with MiniLM-L6 or `bge-small` |
-| P3 | Expose `memory://search?q=` Resource | dev-ml | read-only, returns top-k snippets |
-| P3 | Memory append tool `memory_append` | dev-ml | agent can write memories to RAG store |
-| P3 | Embedding backend abstraction | dev-ml | hot-swap MiniLM/BGE/Ollama embeddings |
-| P3 | Storage backend abstraction (`StorageBackend` interface) | dev-backend | Keep SQLite default; optional Mongo/Postgres implementation for multi-agent scaling |
-| P3 | `VectorMemory` + `sqlite-vec` backend | dev-ml | long-term semantic recall |
-| P3 | Reflection logger (writes to memory) | dev-agent | post-tool call success/failure notes |
-| P3 | Self-inspect tool `self_inspect` | dev-agent | agent can query its own state & limits |
-| P3 | Telemetry resource `health://stats` | dev-platform | uptime & latency metrics |
-| P4 | Online prompt authoring UI | dev-frontend | web/cli playground for `.prompt` templates |
-| P4 | Plugin marketplace scaffold | dev-platform | docs + entry-point registry for community |
-| P4 | Distributed agent federation PoC | dev-research | remote MCP peer discovery & trust |
+| P3 | **Done** – Expose `memory://semantic_search` Resource | dev-ml | read-only, returns top-k snippets |
+| P3 | **Done** – Memory append tool `memory_append` | dev-ml | agent can write memories to RAG store |
+| P3 | **Done** – `VectorMemory` + FAISS backend | dev-ml | Implemented with FAISS backend and Ollama for embeddings. |
+| P3 | **Planned** – Storage backend abstraction (`StorageBackend` interface) | dev-backend | Keep SQLite default; optional Mongo/Postgres implementation for multi-agent scaling |
+| P3 | **Planned** – Reflection logger (writes to memory) | dev-agent | post-tool call success/failure notes |
+| P3 | **Planned** – Self-inspect tool `self_inspect` | dev-agent | agent can query its own state & limits |
+| P3 | **Planned** – Telemetry resource `health://stats` | dev-platform | uptime & latency metrics |
+| P4 | **Planned** – Online prompt authoring UI | dev-frontend | web/cli playground for `.prompt` templates |
+| P4 | **Planned** – Distributed agent federation PoC | dev-research | remote MCP peer discovery & trust |
 
 ## 3. Milestones
 1. **Completed**
@@ -58,8 +57,9 @@
 3. **M2 – Context Intelligence** *(COMPLETE)*
    - ✅ Sliding window guard implemented.
    - ✅ Hybrid summarisation policy is complete, using `WindowMemory` and the `summarize_text` tool.
-4. **M3 – Memory-Augmented Agent (Vector)**
-   - Embedding store, RAG resource, improved recall.
+4. **M3 – Memory-Augmented Agent (Vector)** *(Mostly Complete)*
+   - ✅ Embedding store, RAG resource, and append tool are implemented.
+   - ✅ Core vector memory implemented with FAISS and Ollama.
 5. **M4 – Security Hardened**
    - JWT-style envelopes, secret rotation, CI gate for secrets.
 6. **M5 – Community & UI**
@@ -72,7 +72,7 @@
 - **Tokenizer**: Qwen tokeniser ≈ tiktoken `qwen.tiktoken`; fallback to `cl100k_base`.
 - **Error Bus**: simple dataclass → JSON → DB; add `/errors` CLI command.
 - **Embeddings**: store `(message_id, vector)`; rebuild index lazily.
-- **Vector DB**: Start with `sqlite-vec` for simplicity. Keep the implementation modular to allow for a future migration to a more robust solution like **FAISS**. The vector store can be kept on disk under `./vector_store/`.
+- **Vector DB**: Implemented using FAISS for the index and Ollama for generating embeddings. The vector store is kept on disk under the path specified by `VECTOR_DB_PATH`.
 
 ## 5. Testing / CI
 - Unit tests for async DB, token counting edge-cases
@@ -135,7 +135,7 @@ graph TD
 
   %% Memory layer explicit on the right side
   subgraph Memory_Right["Memory Layer"]
-    EmbeddingIndex[("sqlite-vec Index / Embeddings")]
+    EmbeddingIndex[("FAISS Index / Embeddings")]
   end
 
   ContextManager --> EmbeddingIndex
