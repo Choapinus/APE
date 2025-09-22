@@ -14,7 +14,60 @@
    - HMAC signing is present, but key handling & expiry could be improved.
    - Current persistence layer is SQLite; scalable document store options (Mongo/Postgres-JSONB) under consideration.
 
-## 2. Immediate Objectives (📅 Sprint-0)
+## 2. Strategic Initiatives
+
+### 2.1. A Taxonomy of Agent Types
+
+To guide our development, we will use the following taxonomy of agent types:
+
+*   **`SolverAgent`**: The classical agent that is focused on executing tasks and answering questions. This is the agent we have implemented so far.
+*   **`OrchestratorAgent`**: An agent that is specialized in managing other agents. It can delegate tasks, monitor progress, and synthesize results.
+*   **`ToolSmithAgent`**: A specialized agent that can create new tools for other agents to use.
+*   **`DataAnalystAgent`**: An agent that is an expert in database queries and data analysis.
+*   **`SelfReflectionAgent`**: A meta-agent that is responsible for reviewing the performance of other agents and updating the system's knowledge base.
+
+This taxonomy will help us to think more clearly about the different roles that agents can play in a multi-agent system.
+
+### 2.2. Agent Orchestration and Sub-Task Management
+
+Our goal is to create a heterogeneous multi-agent system where specialized "expert" agents can be created with different models, tools, and personalities. We will adopt a cautious, incremental, and experimental approach to implementing agent orchestration.
+
+#### Phase 0: Background Task Delegation
+
+*   **Goal**: Prove that we can successfully delegate a simple, self-contained task to a background process.
+*   **Tasks**:
+    1.  Implement the `subtask.py` resource adapter.
+    2.  Modify the `call_slm` tool to run in the background and return a `subtask://` URI.
+    3.  Implement the `get_task_status` tool.
+
+#### Phase 1: The Minimal Viable Orchestrator
+
+*   **Goal**: Implement a minimal `call_agent` tool that can delegate a task to a sub-agent with the same configuration as the parent.
+*   **Tasks**:
+    1.  Implement the minimal `call_agent` tool, using the `subtask://` resource and `get_task_status` tool from Phase 0.
+
+#### Phase 2: Experimentation and Learning
+
+*   **Goal**: Learn about the dynamics of our multi-agent system through experimentation.
+*   **Tasks**:
+    1.  Conduct a series of experiments with different agent configurations and tasks.
+    2.  Document the findings in new `findings` documents.
+
+#### Phase 3: Heterogeneous Agents
+
+*   **Goal**: Extend the orchestration system to support heterogeneous agents with different models, tools, and personalities.
+*   **Tasks**:
+    1.  Extend the `call_agent` tool to allow for the configuration of the sub-agent's model, tools, and personality.
+    2.  Implement the `agent_factory.py` module and the shared `MCPClient`.
+
+#### Phase 4: Cross-Session Learning
+
+*   **Goal**: Enable the agent to learn from its experiences and to retain knowledge across sessions.
+*   **Tasks**:
+    1.  Integrate the cross-session learning mechanisms we have discussed, using `VectorMemory` as a knowledge base.
+    2.  Implement the "reflection" step in the `call_agent` tool.
+
+## 3. Immediate Objectives (📅 Sprint-0)
 | Priority | Task | Owner | Notes |
 |----------|------|-------|-------|
 | P0 | **Done** – Fix critical startup and resource handling bugs | dev-agent | Addressed circular imports, URI parsing, and parameter handling. |
@@ -29,8 +82,8 @@
 | P1 | **Done** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | Implemented in `WindowMemory` |
 | P1 | **Done** – Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | Implemented in `ape/core/memory.py` |
 | P1 | **Done** – Add MCP tool `summarize_text` (server-side) | dev-backend | Implemented and used by `WindowMemory` |
-| P1 | **Planned** – Implement a `TaskPlanner` component | dev-agent | Moves planning from the prompt into explicit code. The final approach is under discussion, exploring sequential vs. graph-based planners (e.g., potentially without heavy dependencies like LangGraph). |
-| P1 | **Planned** – Implement `call_agent` (A2A) tool with depth guard | dev-backend | spawns peer agent for sub-tasks |
+| P1 | **[STALE]** – Implement a `TaskPlanner` component | dev-agent | Superseded by the Agent Orchestration plan. |
+| P1 | **[STALE]** – Implement `call_agent` (A2A) tool with depth guard | dev-backend | Now part of the Agent Orchestration plan. |
 | P2 | **Done** – Plugin discovery extended to Prompts & Resources | dev-platform | entry-point groups `ape_prompts.dirs`, `ape_resources.adapters` |
 | P2 | **Done** – Extract public library API (clean `ape` facade) | dev-platform | re-export Agent, MCPClient; lazy CLI deps |
 | P2 | **Done** – `pyproject.toml` with optional extras (`llm`, `images`, `dev`) | dev-platform | Consolidated all dependencies. |
@@ -48,7 +101,7 @@
 | P4 | **Planned** – Online prompt authoring UI | dev-frontend | web/cli playground for `.prompt` templates |
 | P4 | **Planned** – Distributed agent federation PoC | dev-research | remote MCP peer discovery & trust |
 
-## 3. Milestones
+## 4. Milestones
 1. **Completed**
    - All chat/database ops are now awaitable; DB layer uses `aiosqlite`.
 2. **M1 – Prompt & Resource Parity** *(COMPLETE)*
@@ -74,7 +127,7 @@
 8. **M7 – Research / Federation**
    - Distributed agents, online learning hooks.
 
-## 4. Technical Notes
+## 6. Technical Notes
 - **aiosqlite**: supports same SQL; wrap existing calls in `async with aiosqlite.connect(...)`.
 - **Tokenizer**: Qwen tokeniser ≈ tiktoken `qwen.tiktoken`; fallback to `cl100k_base`.
 - **Error Bus**: simple dataclass → JSON → DB; add `/errors` CLI command.
@@ -82,24 +135,24 @@
 - **Vector DB**: Implemented using FAISS for the index and Ollama for generating embeddings. The vector store is kept on disk under the path specified by `VECTOR_DB_PATH`.
 - **Pinning**: Can be implemented by adding an `is_pinned` boolean column to the `history` table. The `WindowMemory` pruning logic must be updated to ignore pinned messages.
 
-## 5. Testing / CI
+## 7. Testing / CI
 - Unit tests for async DB, token counting edge-cases
 - Integration tests: tool call → error persists
 - Memory search returns deterministic top-k
 - Tests for pinning: ensure pinned messages are never pruned.
 - Tests for Unified Memory Manager: verify that it correctly dispatches to the underlying memory stores.
 
-## 6. Open Questions
+## 8. Open Questions
 1. Do we need multi-tenant session isolation now or later?
 2. Which embedding model balances speed ↔ memory best on WSL2?
 3. Should prompts live as markdown templates or Python functions?
 4. How to benchmark quality loss from overflow  → summary → drop cycle?  
 5. When to chain summaries (summary-of-summaries) to avoid drift?
 
-## 7. Next Review
+## 9. Next Review
 Schedule design-review meeting once **M3** tasks are underway or by **2025-09-26**, whichever comes first.
 
-## 8. Proposed Enhanced Architecture
+## 10. Proposed Enhanced Architecture
 ```mermaid
 %% Updated enhanced architecture with Memory layer on the far right
 graph TD
@@ -152,7 +205,7 @@ graph TD
   MemoryResource --> EmbeddingIndex
 ```
 
-## 9. Expert-Level Recommendations Incorporated
+## 11. Expert-Level Recommendations Incorporated
 - **Protocol symmetry**: Prompts & Resources now share the unified plugin registry.
 - **Hybrid Memory**: vector backend abstraction planned (sqlite-vec ⇄ FAISS).
 - **Writeable reflections**: `reflection_logger` & `self_inspect` tools enable meta-reasoning.
@@ -160,12 +213,12 @@ graph TD
 - **Community growth**: Marketplace scaffold and prompt UI scheduled for M5.
 - **Research path**: Federation PoC & online learning targeted for M6.
 
-## 10. Future Considerations
+## 12. Future Considerations
 ### 1. Agent Extensibility and Plugin Support
 **Current:** Tool and prompt plugins are supported, but agent behaviors (reasoning strategies, action selection) are mostly hardcoded.
 **Suggestion:**
 - Make agent strategies pluggable, e.g., allow registering new reasoning modules, decision policies, or action planners via entry points.
 - Provide a base AgentCore class with hooks (before_tool_call, after_tool_call, on_context_refresh) for easy extension.
 
-## 11. Future Development
+## 13. Future Development
 - **GPU Acceleration:** Optimize vector search performance by implementing a `faiss-gpu` backend. This will require a separate `Dockerfile.gpu` and a suitable NVIDIA CUDA base image.
