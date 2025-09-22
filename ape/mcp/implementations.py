@@ -20,7 +20,6 @@ from .session_manager import get_session_manager
 from ape.settings import settings
 from ape.errors import DatabaseError, ToolExecutionError
 from ape.core.vector_memory import get_vector_memory
-from .plugin import discover
 from ape.resources import list_resources as _list_resources
 
 # Configuration

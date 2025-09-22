@@ -159,7 +159,7 @@ class AgentCore:
                     }
                     for prm in _local_list()
                 ]
-            except Exception:
+            except Exception as e:
                 logger.error(f"Failed to discover prompts: {e}")
 
         # Resources
