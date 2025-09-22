@@ -32,76 +32,115 @@ APE provides a sophisticated chat interface that leverages the [Model Context Pr
 
 ### Prerequisites
 
-- **Python 3.11+**
-- **Conda** (recommended for environment management)
-- **Ollama** (for LLM inference)
+- **Docker** and **Docker Compose**
+- **NVIDIA Container Toolkit** (for GPU support, optional but recommended)
 
-### Installation
+### Docker Installation (Recommended)
 
-#### 1. Setup Conda Environment
-
-```bash
-# Create and activate conda environment
-conda create -n ape python=3.11
-conda activate ape
-```
-
-#### 2. Install Ollama
-
-**Linux/WSL:**
-```bash
-curl -fsSL https://ollama.ai/install.sh | sh
-```
-
-**macOS:**
-```bash
-brew install ollama
-```
-
-**Windows:**
-Download from [ollama.ai](https://ollama.ai/download)
-
-#### 3. Pull an LLM Model
-
-```bash
-# Start Ollama service
-ollama serve
-
-# In another terminal, pull the recommended models
-ollama pull qwen3:8b
-ollama pull qwen3:0.6b
-ollama pull embeddinggemma:latest
-```
-
-#### 4. Install APE
+#### 1. Clone and Setup
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd ape
 
-# Install core library and all extras for a full interactive experience
-pip install ".[llm,images,cli]"
-
-# For development (includes testing tools):
-pip install -e ".[dev,llm,cli]"
+# Copy example environment file
+cp env.example .env
+# Edit .env as needed (JWT key is auto-generated)
 ```
 
-### Running APE
-
-#### 1. Set the JWT Secret Key
-For security, tool results are signed. You must set a secret key as an environment variable.
+#### 2. Start Backend Services
 
 ```bash
-# Generate and export a strong secret key
-export MCP_JWT_KEY=$(openssl rand -hex 16)
+# Start Ollama and MCP server (background services)
+docker compose up -d ollama mcp-server
+
+# Wait for services to be healthy (~30-60 seconds)
+docker compose logs -f ollama mcp-server
 ```
-Alternatively, you can add this key to a `.env` file in the project root.
 
-#### 2. Start the CLI Chat Interface
+#### 3. Download Models
 
 ```bash
-python cli_chat.py
+# Pull required models after Ollama is healthy
+docker compose exec ollama ollama pull qwen3:4b
+docker compose exec ollama ollama pull qwen3:0.6b
+docker compose exec ollama ollama pull embeddinggemma:latest
+```
+
+#### 4. Start Interactive Agent
+
+```bash
+# Start the APE agent (interactive terminal session)
+docker compose --profile interactive up agent
+```
+
+This will attach to your terminal for interactive chat with APE.
+
+#### Docker Configuration Details
+
+**Services:**
+- **`ollama`**: LLM server with GPU support (NVIDIA GPUs)
+- **`mcp-server`**: APE's MCP protocol server (background)
+- **`agent`**: Interactive CLI chat interface (profile: `interactive`)
+
+**Persistent Volumes:**
+- **`ape_db`** → `/app/database/`: Contains `sessions.db` (conversation history, summaries, tool errors)
+- **`ape_data`** → `/app/data/`: Contains vector memory FAISS index and HuggingFace cache
+- **`ollama_data`** → `/root/.ollama/`: Ollama models and configuration
+
+**Security:**
+- JWT keys are auto-generated on first run via `docker-entrypoint.sh`
+- Services run as non-root user `apeuser` for security
+
+**GPU Configuration:**
+The Ollama service is configured for NVIDIA GPU support. Edit `docker-compose.yml` to:
+- Remove GPU sections if running CPU-only
+- Adjust GPU memory fraction (`OLLAMA_GPU_MEMORY_FRACTION`)
+- Modify visible devices (`NVIDIA_VISIBLE_DEVICES`)
+
+#### Managing Services
+
+```bash
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs ollama
+docker compose logs mcp-server
+
+# Rebuild after code changes
+docker compose build mcp-server agent
+
+# Clean restart
+docker compose down && docker compose up -d ollama mcp-server
+```
+
+### Local Installation (Alternative)
+
+For development or if you prefer local installation:
+
+#### Prerequisites
+- **Python 3.11+**
+- **Ollama** (installed locally)
+
+#### Setup
+```bash
+# Create environment
+conda create -n ape python=3.11
+conda activate ape
+
+# Install APE
+pip install -e ".[dev,llm,images,cli]"
+
+# Start Ollama and pull models
+ollama serve
+ollama pull qwen3:4b qwen3:0.6b embeddinggemma:latest
+
+# Configure and start APE
+export MCP_JWT_KEY=$(openssl rand -hex 32)
+python mcp_server.py &  # Start server
+python cli_chat.py     # Start interactive agent
 ```
 
 #### Available CLI Commands
