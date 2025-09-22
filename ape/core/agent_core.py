@@ -160,19 +160,18 @@ class AgentCore:
                     for prm in _local_list()
                 ]
             except Exception:
-                pass
+                logger.error(f"Failed to discover prompts: {e}")
 
         # Resources
         try:
             resources_result = await self.mcp_client.list_resources()
             capabilities["resources"] = [
-                res.to_dict() for res in resources_result.resources
+                res.model_dump() for res in resources_result.resources
             ]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to discover resources: {e}")
         
-        # commented out for now because it's too verbose for the CLI
-        # logger.debug("Capabilities: " + json.dumps(capabilities, indent=2))
+        logger.debug(f"Capabilities resources: {capabilities['resources']}")
 
         # Cache result with timestamp
         self._cached_capabilities = capabilities  # type: ignore[attr-defined]
@@ -183,7 +182,7 @@ class AgentCore:
     async def create_dynamic_system_prompt(self, capabilities: Dict[str, Any]) -> str:
         from ape.prompts import render_prompt  # local import
 
-        def _fmt(items: List[Dict[str, Any]]) -> str:
+        def _fmt(items: List[Dict[str, Any]], include_uri: bool = False) -> str:
             if not items:
                 return "None"
 
@@ -197,12 +196,17 @@ class AgentCore:
                     args = ""
                 if args:
                     args = f" (args: {args})"
-                lines.append(f"• {itm['name']}{args}: {itm['description']}")
+
+                uri_part = ""
+                if include_uri and "uri" in itm:
+                    uri_part = f" (uri: {str(itm['uri'])})"
+
+                lines.append(f"• **{itm['name']}**{uri_part}{args}: {itm['description']}")
             return "\n".join(lines)
 
         tools_section = _fmt(capabilities["tools"])
         prompts_section = _fmt(capabilities["prompts"])
-        resources_section = _fmt(capabilities["resources"])
+        resources_section = _fmt(capabilities["resources"], include_uri=True)
 
         return render_prompt(
             "system",
@@ -373,6 +377,8 @@ class AgentCore:
         if ctx_summary.strip() != "CURRENT SESSION CONTEXT:":
             system_prompt += f"\n\nCURRENT CONTEXT:\n{ctx_summary}"
 
+        logger.debug(f"Final System Prompt:\n{system_prompt}")
+
         exec_conversation = [
             {"role": "system", "content": system_prompt},
             *conversation,
@@ -428,34 +434,86 @@ class AgentCore:
             has_tool_calls = False
 
             try:
-                logger.info(f"Thinking from settings: {settings.SHOW_THOUGHTS}")
-                stream = await client.chat(
-                    model=settings.LLM_MODEL,
-                    messages=exec_conversation,
-                    tools=tools_spec,
-                    options={"temperature": settings.TEMPERATURE,
-                             "top_p": settings.TOP_P,
-                             "top_k": settings.TOP_K,
-                            },
-                    think=settings.SHOW_THOUGHTS,
-                    stream=True,
-                )
+                # logger.debug(f"Thinking from settings: {settings.SHOW_THOUGHTS}")
+                # stream = await client.chat(
+                #     model=settings.LLM_MODEL,
+                #     messages=exec_conversation,
+                #     tools=tools_spec,
+                #     options={"temperature": settings.TEMPERATURE,
+                #              "top_p": settings.TOP_P,
+                #              "top_k": settings.TOP_K,
+                #             },
+                #     # think=settings.SHOW_THOUGHTS,
+                #     stream=True,
+                # )
 
+                ## NOQA: about this if-else statement...
+                # Im so sorry for this. But ollama has this strange bug.
+                # when we use think=False, the model will not think (as expected)
+                # when we use think=True, the model will not think (this is the bug).
+                # but when we dont use the think parameter, the model will think (as expected).
+                # maybe the think parameter is True by default.
+
+                if settings.SHOW_THOUGHTS:
+                    stream = await client.chat(
+                        model=settings.LLM_MODEL,
+                        messages=exec_conversation,
+                        tools=tools_spec,
+                        options={"temperature": settings.TEMPERATURE,
+                                 "top_p": settings.TOP_P,
+                                 "top_k": settings.TOP_K,
+                                },
+                        stream=True,
+                    )
+                else:
+                    stream = await client.chat(
+                        model=settings.LLM_MODEL,
+                        messages=exec_conversation,
+                        tools=tools_spec,
+                        options={"temperature": settings.TEMPERATURE,
+                                 "top_p": settings.TOP_P,
+                                 "top_k": settings.TOP_K,
+                                },
+                        think=settings.SHOW_THOUGHTS,
+                        stream=True,
+                    )
                 
             except Exception as first_exc:
                 # Some models error (HTTP 500) when a tools payload is present –
                 # retry once without tools to keep basic chat working.
                 logger.warning(f"Ollama chat failed with tools payload (will retry without tools): {first_exc}")
-                stream = await client.chat(
-                    model=settings.LLM_MODEL,
-                    messages=exec_conversation,
-                    options={"temperature": settings.TEMPERATURE,
-                             "top_p": settings.TOP_P,
-                             "top_k": settings.TOP_K,
-                            },
-                    think=settings.SHOW_THOUGHTS,
-                    stream=True,
-                )
+                # stream = await client.chat(
+                #     model=settings.LLM_MODEL,
+                #     messages=exec_conversation,
+                #     options={"temperature": settings.TEMPERATURE,
+                #              "top_p": settings.TOP_P,
+                #              "top_k": settings.TOP_K,
+                #             },
+                #     think=settings.SHOW_THOUGHTS,
+                #     stream=True,
+                # )
+
+                if settings.SHOW_THOUGHTS:
+                    stream = await client.chat(
+                        model=settings.LLM_MODEL,
+                        messages=exec_conversation,
+                        options={"temperature": settings.TEMPERATURE,
+                                 "top_p": settings.TOP_P,
+                                 "top_k": settings.TOP_K,
+                                },
+                        stream=True,
+                    )
+                else:
+                    stream = await client.chat(
+                        model=settings.LLM_MODEL,
+                        messages=exec_conversation,
+                        options={"temperature": settings.TEMPERATURE,
+                                 "top_p": settings.TOP_P,
+                                 "top_k": settings.TOP_K,
+                                },
+                        stream=True,
+                        think=settings.SHOW_THOUGHTS,
+                    )
 
             async for chunk in stream:
                 if thinking := chunk.get("thinking"):

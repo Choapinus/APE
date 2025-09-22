@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # LLM / Ollama
     OLLAMA_BASE_URL: HttpUrl = Field("http://localhost:11434", description="Base URL of the local Ollama server")
     LLM_MODEL: str = Field("qwen3:8b", description="Model name passed to Ollama")
+    SLM_MODEL: str = Field("qwen3:0.6b", description="Smaller, faster model for simple tasks via call_slm tool")
     EMBEDDING_MODEL: str = Field("embeddinggemma:latest", description="Ollama model for text embeddings")
     EMBEDDING_SIZE: int | None = Field(None, description="Ollama embedding size")
     TEMPERATURE: float = Field(0.5, description="LLM sampling temperature")

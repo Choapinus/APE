@@ -21,14 +21,14 @@ class ConversationAdapter(ResourceAdapter):
     catalog = [
         ResourceMeta(
             uri="conversation://sessions",
-            name="All conversation sessions",
-            description="List of session IDs with basic metadata",
+            name="Conversation session list",
+            description="Retrieve a list of all past and current conversation session IDs with their metadata.",
             type_="application/json",
         ),
         ResourceMeta(
             uri="conversation://recent",
-            name="Recent messages (all sessions)",
-            description="Most recent messages across every session (default 20)",
+            name="Recent conversation messages",
+            description="Access the most recent messages from all conversation sessions. Default limit is 20 messages.",
             type_="application/json",
         ),
     ]

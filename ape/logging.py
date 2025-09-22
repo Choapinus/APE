@@ -36,6 +36,7 @@ def setup_logger(
 
     logger.add("logs/app.log", level="INFO", rotation="1 MB", retention="10 days")
     logger.add("logs/debug.log", level="DEBUG", rotation="1 MB", retention="10 days")
+    logger.add("logs/error.log", level="ERROR", rotation="1 MB", retention="10 days")
 
     # pretty-print to stderr at the chosen level
     logger.add(

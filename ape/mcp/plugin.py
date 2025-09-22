@@ -5,6 +5,9 @@ from typing import Callable, Dict, Any
 
 _REGISTRY: Dict[str, Dict[str, Any]] = {}
 
+def get_registry() -> Dict[str, Dict[str, Any]]:
+    """Return a copy of the internal tool registry."""
+    return _REGISTRY.copy()
 
 def tool(name: str, description: str, input_schema: dict):
     """Decorator to register an MCP tool implementation.

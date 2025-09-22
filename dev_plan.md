@@ -58,11 +58,14 @@
 3. **M2 – Context Intelligence** *(COMPLETE)*
    - ✅ Sliding window guard implemented.
    - ✅ Hybrid summarisation policy is complete, using `WindowMemory` and the `summarize_text` tool.
-4. **M3 – Memory-Augmented Agent (Vector)** *(Mostly Complete)*
-   - ✅ Embedding store, RAG resource, and append tool are implemented.
-   - ✅ Core vector memory implemented with FAISS and Ollama.
+4. **M3 – Advanced Memory Architecture** *(In Progress)*
+   - ✅ **Vector Memory**: Core vector memory with FAISS/Ollama is implemented.
+   - **Planned – Unified Memory Manager**: Refactor `WindowMemory` and `VectorMemory` under a single, unified manager to simplify agent logic and prepare for future memory types.
+   - **Planned – Pinning & Importance**: Implement the ability for the agent or user to "pin" critical messages in `WindowMemory` to prevent them from being summarized or pruned.
+   - **Planned – Hybrid Context Retrieval**: Enhance the `ContextManager` to intelligently fetch and combine context from multiple sources (recency, semantic, pinned) to create a more relevant context for the LLM.
 5. **M4 – Advanced Reasoning & Planning** *(PLANNED)*
-   - Implement TaskPlanner for explicit, multi-step execution.
+   - **TaskPlanner & Procedural Memory**: Implement the `TaskPlanner` component. The generated plans and workflows will be stored in a new `ProceduralMemory` layer, allowing the agent to recall and reuse successful strategies.
+   - **Reflection & Explainability**: Expand the `reflection_logger` to explicitly log all memory actions (e.g., `pin`, `append`, `search`, `prune`). The agent should be able to use this log to explain its reasoning.
    - Implement code-driven error handling and retry logic.
 6. **M5 – Security Hardened**
    - JWT-style envelopes, secret rotation, CI gate for secrets.
@@ -77,11 +80,14 @@
 - **Error Bus**: simple dataclass → JSON → DB; add `/errors` CLI command.
 - **Embeddings**: store `(message_id, vector)`; rebuild index lazily.
 - **Vector DB**: Implemented using FAISS for the index and Ollama for generating embeddings. The vector store is kept on disk under the path specified by `VECTOR_DB_PATH`.
+- **Pinning**: Can be implemented by adding an `is_pinned` boolean column to the `history` table. The `WindowMemory` pruning logic must be updated to ignore pinned messages.
 
 ## 5. Testing / CI
 - Unit tests for async DB, token counting edge-cases
 - Integration tests: tool call → error persists
 - Memory search returns deterministic top-k
+- Tests for pinning: ensure pinned messages are never pruned.
+- Tests for Unified Memory Manager: verify that it correctly dispatches to the underlying memory stores.
 
 ## 6. Open Questions
 1. Do we need multi-tenant session isolation now or later?
