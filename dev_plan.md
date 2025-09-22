@@ -67,6 +67,14 @@ Our goal is to create a heterogeneous multi-agent system where specialized "expe
     1.  Integrate the cross-session learning mechanisms we have discussed, using `VectorMemory` as a knowledge base.
     2.  Implement the "reflection" step in the `call_agent` tool.
 
+### 2.3. Prompt System Enhancement
+
+The current prompt system, while functional, is not as robust or extensible as the tool and resource systems. To support more advanced agentic workflows, especially for the `OrchestratorAgent`, we will enhance the prompt system with the following:
+
+*   **Centralized Prompt Registry:** Implement a `PromptRegistry` class that discovers and manages prompt templates from the core application and external plugins using the `ape_prompts.dirs` entry point.
+*   **MCP Integration:** Expose the `PromptRegistry` through the MCP server with a `list_prompts` method, allowing agents to discover available prompts at runtime.
+*   **Dynamic Prompt Rendering:** Introduce a `render_prompt` tool that allows an agent to request a specific prompt by name and provide dynamic data for rendering. This will be a key enabler for the "planified orchestrator".
+
 ## 3. Immediate Objectives (📅 Sprint-0)
 | Priority | Task | Owner | Notes |
 |----------|------|-------|-------|
@@ -82,6 +90,7 @@ Our goal is to create a heterogeneous multi-agent system where specialized "expe
 | P1 | **Done** – Implement *Hybrid* summarisation policy (agent triggers `summarize_text` on overflow) | dev-agent | Implemented in `WindowMemory` |
 | P1 | **Done** – Design & implement `AgentMemory` abstraction + `WindowMemory` (summarise → drop) | dev-agent | Implemented in `ape/core/memory.py` |
 | P1 | **Done** – Add MCP tool `summarize_text` (server-side) | dev-backend | Implemented and used by `WindowMemory` |
+| P1 | **Planned** – Implement Prompt System Enhancement | dev-platform | Create `PromptRegistry`, expose via MCP, and add `render_prompt` tool. |
 | P1 | **[STALE]** – Implement a `TaskPlanner` component | dev-agent | Superseded by the Agent Orchestration plan. |
 | P1 | **[STALE]** – Implement `call_agent` (A2A) tool with depth guard | dev-backend | Now part of the Agent Orchestration plan. |
 | P2 | **Done** – Plugin discovery extended to Prompts & Resources | dev-platform | entry-point groups `ape_prompts.dirs`, `ape_resources.adapters` |
