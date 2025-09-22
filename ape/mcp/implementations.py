@@ -284,68 +284,6 @@ async def search_conversations_impl(query: str, limit: int = 5) -> str:
         return f"Error searching conversations: {str(e)}"
 
 
-async def list_available_tools_impl() -> str:
-    """Implementation of the list_available_tools tool."""
-    try:
-        logger.info("🔧 [IMPL] Getting list of available tools")
-        
-        tools = [
-            {
-                "name": "execute_database_query",
-                "description": "Execute a custom SQL query on the conversation database",
-                "example": "SELECT COUNT(*) FROM messages WHERE role = 'user'"
-            },
-            {
-                "name": "get_conversation_history",
-                "description": "Retrieve recent conversation history from the database",
-                "example": "Get last 10 messages from current session"
-            },
-            {
-                "name": "get_database_info",
-                "description": "Get information about the conversation database schema and statistics",
-                "example": "Show database structure and message counts"
-            },
-            {
-                "name": "search_conversations",
-                "description": "Search through conversation history using text matching",
-                "example": "Find messages containing 'python'"
-            },
-            {
-                "name": "list_available_tools",
-                "description": "Get information about all available MCP tools",
-                "example": "Show all tools and their descriptions"
-            },
-            {
-                "name": "get_last_N_user_interactions",
-                "description": "Get the last N user messages from the current session",
-                "example": "Show the last 3 user messages"
-            },
-            {
-                "name": "get_last_N_tool_interactions", 
-                "description": "Get the last N tool execution results from the current session",
-                "example": "Show the last 3 tool executions"
-            },
-            {
-                "name": "get_last_N_agent_interactions",
-                "description": "Get the last N agent responses from the current session", 
-                "example": "Show the last 3 agent responses"
-            }
-        ]
-        
-        # Format the response nicely
-        response = "Available MCP Tools:\n\n"
-        for tool in tools:
-            response += f"📍 {tool['name']}\n"
-            response += f"   Description: {tool['description']}\n"
-            response += f"   Example usage: {tool['example']}\n\n"
-            
-        logger.info("✅ [IMPL] Tool list retrieved successfully")
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ [IMPL] Error getting tool list: {e}")
-        raise ValueError(f"Failed to get tool list: {str(e)}")
-
 
 async def get_last_N_user_interactions_impl(n: int = 5, session_id: str = None) -> str:
     """Implementation of the get_last_N_user_interactions tool."""
@@ -659,6 +597,63 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
         summary = " ".join(summary.split()[:-1])
 
     return summary or "(no content)"
+
+async def call_slm_impl(
+    prompt: str,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    think: bool = False,
+) -> str:
+    """Invoke a Small Language Model for simple, fast tasks."""
+    logger.info(f"🧠 [IMPL] Calling SLM with prompt: {prompt[:80]}...")
+
+    try:
+        import importlib
+        import asyncio
+
+        ollama = importlib.import_module("ollama")
+        client = ollama.AsyncClient(host=str(settings.OLLAMA_BASE_URL))
+        model_name: str = settings.SLM_MODEL
+
+        options = {}
+        if temperature is not None:
+            options["temperature"] = temperature
+        if top_p is not None:
+            options["top_p"] = top_p
+        if top_k is not None:
+            options["top_k"] = top_k
+
+        final_prompt = prompt
+        if think:
+            final_prompt = (
+                "You are a helpful assistant. Please think step by step before answering the user's query. "
+                "Use <think>...</think> tags to write down your thoughts.\n\n"
+                f"User query: {prompt}"
+            )
+
+        response = await asyncio.wait_for(
+            client.generate(model=model_name, prompt=final_prompt, options=options),
+            timeout=45  # Generous timeout for the SLM
+        )
+
+        if isinstance(response, dict):
+            result = response.get("response", "").strip()
+        else:
+            try:
+                result = response.response.strip()
+            except AttributeError:
+                result = str(response).strip()
+
+        logger.info("✅ [IMPL] SLM call successful.")
+        return result
+
+    except asyncio.TimeoutError:
+        logger.error(f"💥 [IMPL] SLM call timed out.")
+        raise ToolExecutionError("The request to the Small Language Model timed out.")
+    except Exception as e:
+        logger.error(f"💥 [IMPL] Error calling SLM: {e}")
+        raise ToolExecutionError(f"An error occurred while calling the SLM: {e}")
 
 async def list_available_resources_impl() -> str:
     """Implementation of the list_available_resources tool."""

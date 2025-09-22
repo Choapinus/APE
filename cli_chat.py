@@ -267,7 +267,7 @@ class APEChatCLI:
             capabilities["resources"] = [
                 {
                     "name": resource.name,
-                    "uri": resource.uri, # Added URI
+                    "uri": resource.uri,
                     "description": resource.description,
                     "type": resource.type
                 }

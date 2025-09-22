@@ -67,8 +67,10 @@ Download from [ollama.ai](https://ollama.ai/download)
 # Start Ollama service
 ollama serve
 
-# In another terminal, pull a recommended model
+# In another terminal, pull the recommended models
 ollama pull qwen3:8b
+ollama pull qwen3:0.6b
+ollama pull embeddinggemma:latest
 ```
 
 #### 4. Install APE
@@ -126,7 +128,8 @@ ape/
 │   ├── db_pool.py                # aiosqlite connection pool
 │   ├── core/
 │   │   ├── agent_core.py         # Core agent logic
-│   │   └── memory.py             # WindowMemory implementation
+│   │   ├── memory.py             # WindowMemory implementation
+│   │   └── vector_memory.py      # VectorMemory implementation
 │   ├── mcp/                      # MCP implementation
 │   │   ├── server.py             # MCP server with tool definitions
 │   │   ├── implementations.py    # Tool implementation functions
@@ -139,6 +142,7 @@ ape/
 ├── tests/                        # Test suite
 ├── pyproject.toml                # Project definition and dependencies
 ├── docs/                         # Markdown documentation & guides
+├── database/                     # SQLite and FAISS databases
 └── logs/                         # Application logs
 ```
 
@@ -163,6 +167,14 @@ APE implements the full MCP protocol with **Tools**, **Resources**, and **Prompt
 | `read_resource` | Read any registry resource by URI, passing any parameters as named arguments. |
 | `summarize_text` | Return a concise summary of the provided text. |
 
+### 🧠 Vector Memory Usage
+
+The agent can build a long-term memory by storing information in a vector database. This allows for semantic search over all stored memories.
+
+- **Adding to Memory:** Use the `memory_append` tool to add text to the vector memory. For example:
+  `memory_append(text="The user's favorite color is blue.")`
+- **Retrieving from Memory:** The agent can automatically retrieve relevant information from the vector memory when answering questions. You can also manually query the memory using the `read_resource` tool with the `memory://` URI scheme.
+
 ## ⚙️ Configuration
 
 ### Configuration File (`ape/settings.py`)
@@ -176,12 +188,21 @@ LOG_LEVEL = "DEBUG"
 MCP_SERVER_URL = "http://localhost:8000"
 OLLAMA_BASE_URL = "http://localhost:11434"
 LLM_MODEL = "qwen3:8b"           # Default model pulled via Ollama
+SLM_MODEL = "qwen3:0.6b"
+EMBEDDING_MODEL = "embeddinggemma:latest"
+EMBEDDING_SIZE = None
 TEMPERATURE = 0.5
 MAX_TOOLS_ITERATIONS = 15
 TOP_P = 0.9
 TOP_K = 40
 MCP_JWT_KEY = ""      # MUST be set via env or .env
-SESSION_DB_PATH = "ape/sessions.db"
+SESSION_DB_PATH = "database/sessions.db"
+VECTOR_DB_PATH = "database/vector_memory"
+VECTOR_SEARCH_TOP_K = 5
+VECTOR_SEARCH_RERANK = False
+UI_THEME = "dark"
+SHOW_THOUGHTS = True
+SUMMARIZE_THOUGHTS = False
 SUMMARY_MAX_TOKENS = 128
 CONTEXT_MARGIN_TOKENS = 1024     # Safety buffer for memory pruning
 ```
@@ -277,47 +298,105 @@ CREATE TABLE summaries (
 
 ```mermaid
 graph TD
-  subgraph UI
-    CLI["cli_chat.py"]
-  end
-  subgraph Agent
-    ChatAgent
-    ContextManager
-    WindowMemory["Window Memory"]
-  end
-  CLI --> ChatAgent
-  ChatAgent --> ContextManager
-  ChatAgent --> WindowMemory
-  ChatAgent -->|"LLM"| Ollama[("Ollama Server")]
+    %% User Interface
+    subgraph User_Interface["User Interface"]
+        CLI["CLI<br/><span style='font-size: 0.8em;'>cli_chat.py</span>"]
+    end
 
-  subgraph MCP
-    MCPClient
-    MCPServer
-  end
-  ChatAgent -->|"tool_calls"| MCPClient
-  MCPClient -->|"JSON-RPC"| MCPServer
+    %% Agent Core
+    subgraph Agent_Core["Agent Core"]
+        AgentCore["AgentCore<br/><span style='font-size: 0.8em;'>agent_core.py</span>"]
+        ChatAgent["ChatAgent<br/><span style='font-size: 0.8em;'>chat_agent.py</span>"]
+        ContextManager["ContextManager<br/><span style='font-size: 0.8em;'>context_manager.py</span>"]
+    end
 
-  subgraph Server
+    %% Memory Subsystem
+    subgraph Memory_Subsystem["Memory Subsystem"]
+        WindowMemory["WindowMemory<br/><span style='font-size: 0.8em;'>Short-term</span>"]
+        VectorMemory["VectorMemory<br/><span style='font-size: 0.8em;'>Long-term (RAG)</span>"]
+        FAISS["FAISS Index"]
+    end
+
+    %% MCP (Model Context Protocol)
+    subgraph MCP["MCP (Model Context Protocol)"]
+        MCPClient["MCPClient<br/><span style='font-size: 0.8em;'>mcp_client.py</span>"]
+        MCPServer["MCPServer<br/><span style='font-size: 0.8em;'>mcp_server.py</span>"]
+    end
+
+    %% Backend Server
+    subgraph Backend_Server["Backend Server"]
+        ToolRegistry["Tool Registry"]
+        PromptRegistry["Prompt Registry"]
+        ResourceRegistry["Resource Registry"]
+        SessionManager["SessionManager"]
+    end
+
+    %% Data Persistence
+    subgraph Data_Persistence["Data Persistence"]
+        DBPool["aiosqlite Pool"]
+        SQLiteDB["sessions.db"]
+    end
+
+    %% External Services
+    subgraph External_Services["External Services"]
+        Ollama["Ollama<br/><span style='font-size: 0.8em;'>LLM & Embeddings</span>"]
+    end
+
+    %% Connections
+    CLI --> ChatAgent
+    ChatAgent --> AgentCore
+    AgentCore -- Manages --> ContextManager
+    AgentCore -- Uses --> WindowMemory
+    AgentCore -- Uses --> VectorMemory
+    AgentCore -- LLM_Queries --> Ollama
+
+    AgentCore -- Tool_Calls --> MCPClient
+    MCPClient -- HTTP/SSE --> MCPServer
+
     MCPServer --> ToolRegistry
     MCPServer --> PromptRegistry
     MCPServer --> ResourceRegistry
-    ToolRegistry --> BuiltinTools["Builtin Tools"]
-    ToolRegistry --> ExternalPlugins["External Plugins"]
     MCPServer --> SessionManager
-    SessionManager -->|"async"| DBPool["aSQLite Pool"]
-    DBPool --> SQLiteDB[("sessions.db")]
-  end
+
+    SessionManager --> DBPool
+    DBPool --> SQLiteDB
+
+    WindowMemory -- Summarize_on_overflow --> MCPClient
+    VectorMemory -- Embed_and_Search --> Ollama
+    VectorMemory -- Stores --> FAISS
+
+    ToolRegistry -->|Discovers| BuiltinTools["Built-in Tools"]
+    ToolRegistry -->|Discovers| ExternalPlugins["External Plugins"]
+    PromptRegistry -->|Loads| PromptFiles["Prompt Files (*.prompt.md)"]
+    ResourceRegistry -->|Discovers| ResourceAdapters["Resource Adapters"]
+
+    %% Styling
+    classDef ui fill:#f9f,stroke:#333,stroke-width:2px
+    classDef agent fill:#ccf,stroke:#333,stroke-width:2px
+    classDef memory fill:#cfc,stroke:#333,stroke-width:2px
+    classDef protocol fill:#fcf,stroke:#333,stroke-width:2px
+    classDef backend fill:#ffc,stroke:#333,stroke-width:2px
+    classDef data fill:#cff,stroke:#333,stroke-width:2px
+    classDef external fill:#fcc,stroke:#333,stroke-width:2px
+
+    class CLI ui
+    class AgentCore,ChatAgent,ContextManager agent
+    class WindowMemory,VectorMemory,FAISS memory
+    class MCPClient,MCPServer protocol
+    class ToolRegistry,PromptRegistry,ResourceRegistry,SessionManager backend
+    class DBPool,SQLiteDB data
+    class Ollama external
 ```
 
 ### Current Status
 
 * **Configuration**: Migrated to `pydantic-settings` (`ape/settings.py`). `.env` overrides supported.
 * **CLI**: Split into thin shell, `MCPClient`, `ChatAgent`, `ContextManager`.
-* **Tools**: Data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`).
+* **Tools**: Data-driven plugin system with `@tool` decorator and entry-point discovery (`ape.mcp.plugin`). Key tools like `summarize_text`, `memory_append`, and `read_resource` are available.
 * **Integrity**: MCP server wraps every tool result in a **JWT-signed** envelope; `ChatAgent` verifies.
-* **Token budgeting**: Agent uses a `WindowMemory` implementation with on-overflow summarization to manage context size.
+* **Memory Management**: Agent uses a `WindowMemory` implementation with on-overflow summarization for short-term context, and `VectorMemory` (FAISS-backed) for long-term semantic retrieval.
 * **Prompt registry**: Implemented – prompt templates (`*.prompt.md`) are loaded via Jinja2 and exposed through MCP.
-* **Resource registry**: Implemented – access conversation & DB schema data via `conversation://*` and `schema://*` URIs.
+* **Resource registry**: Implemented – access conversation & DB schema data via `conversation://*` and `schema://*` URIs, and structured error logs via `errors://recent`.
 * **Persistence**: Migrated to asynchronous `aiosqlite` for non-blocking DB operations.
 
 > For detailed roadmap and open tasks see `docs/ROADMAP.md` (TBD).

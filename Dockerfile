@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y \
 COPY pyproject.toml .
 # Since faiss-cpu is a pure-python package, no special build steps are needed.
 RUN pip install --no-cache-dir .'[llm,cli]'
+
+# Copy the rest of the code
 COPY . .
 
 # Add and configure the entrypoint script

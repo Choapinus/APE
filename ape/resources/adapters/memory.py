@@ -18,8 +18,8 @@ class MemoryResourceAdapter(ResourceAdapter):
     catalog = [
         ResourceMeta(
             uri="memory://semantic_search",
-            name="Semantic search over long-term memory",
-            description="Finds the top-k most relevant text snippets from the agent's long-term memory given a query string (e.g., `read_resource(uri='memory://semantic_search', q='my-query')`).",
+            name="Long-term memory search",
+            description="Search the agent's long-term memory for text snippets semantically related to a query. Use 'query' parameter for the query.",
             type_="application/json",
             parameters={
                 "type": "object",
@@ -28,20 +28,16 @@ class MemoryResourceAdapter(ResourceAdapter):
                         "type": "string",
                         "description": "The URI for the semantic search: `memory://semantic_search`"
                     },
-                    "q": {
-                        "type": "string",
-                        "description": "The search query string."
-                    },
                     "query": {
                         "type": "string",
-                        "description": "An alias for 'q'."
+                        "description": "The search query to be vectorized and matched against stored content."
                     },
                     "top_k": {
                         "type": "integer",
                         "description": "The number of top results to return."
                     }
                 },
-                "required": ["uri", "q"]
+                "required": ["uri", "query"]
             }
         ),
     ]
@@ -52,7 +48,7 @@ class MemoryResourceAdapter(ResourceAdapter):
             search_query = kwargs.get("q") or kwargs.get("query")
             
             if not search_query:
-                raise ValueError("Missing 'q' parameter for memory search.")
+                raise ValueError("Missing 'query' parameter for memory search.")
 
             top_k = int(kwargs.get("top_k", settings.VECTOR_SEARCH_TOP_K))
 
