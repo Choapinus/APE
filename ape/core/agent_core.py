@@ -377,7 +377,7 @@ class AgentCore:
         if ctx_summary.strip() != "CURRENT SESSION CONTEXT:":
             system_prompt += f"\n\nCURRENT CONTEXT:\n{ctx_summary}"
 
-        logger.debug(f"Final System Prompt:\n{system_prompt}")
+        # logger.debug(f"Final System Prompt:\n{system_prcontiompt}")
 
         exec_conversation = [
             {"role": "system", "content": system_prompt},
