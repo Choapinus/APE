@@ -526,10 +526,10 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
         prompt1 = (
             f"You are an expert summariser. Provide a concise TL;DR of the following "
             f"text. It is critical that your response is AT MOST {token_cap} tokens long.\n\n"
-            f"Text to summarize:\n{text.strip()}\n\nTL;DR:"
+            f"Text to summarize:\n{text.strip()}\n\nNow just provide the TL;DR:"
         )
         resp1 = await asyncio.wait_for(
-            client.generate(model=model_name, prompt=prompt1), timeout=30
+            client.generate(model=model_name, prompt=prompt1, think=False), timeout=30
         )
         summary = (resp1.get("response", "") if isinstance(resp1, dict) else str(resp1)).strip()
 
@@ -542,7 +542,7 @@ async def summarize_text_impl(text: str, max_tokens: int | None = None) -> str:
                 f"Previous summary to shorten:\n{summary}\n\nConcise TL;DR:"
             )
             resp2 = await asyncio.wait_for(
-                client.generate(model=model_name, prompt=prompt2), timeout=30
+                client.generate(model=model_name, prompt=prompt2, think=False), timeout=30
             )
             summary = (resp2.get("response", "") if isinstance(resp2, dict) else str(resp2)).strip()
 
@@ -603,7 +603,7 @@ async def call_slm_impl(
     temperature: float | None = None,
     top_p: float | None = None,
     top_k: int | None = None,
-    think: bool = False,
+    think: bool | None = None,
 ) -> str:
     """Invoke a Small Language Model for simple, fast tasks."""
     logger.info(f"🧠 [IMPL] Calling SLM with prompt: {prompt[:80]}...")
@@ -633,7 +633,7 @@ async def call_slm_impl(
             )
 
         response = await asyncio.wait_for(
-            client.generate(model=model_name, prompt=final_prompt, options=options),
+            client.generate(model=model_name, prompt=final_prompt, options=options, think=False),
             timeout=45  # Generous timeout for the SLM
         )
 
